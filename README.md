@@ -26,7 +26,7 @@
     * > Whisper is a general-purpose speech recognition model. It is trained on a large dataset of diverse audio and is also a multi-task model that can perform multilingual speech recognition as well as speech translation and language identification.
   * [x] [linto-ai/whisper-timestamped](https://github.com/linto-ai/whisper-timestamped)
     * > Multilingual Automatic Speech Recognition with word-level timestamps and confidence
-  * [x] [ggerganov/whisper.cpp](https://github.com/ggerganov/whisper.cpp) (using [ abdeladim-s/pywhispercpp](https://github.com/abdeladim-s/pywhispercpp))
+  * [x] [ggerganov/whisper.cpp](https://github.com/ggerganov/whisper.cpp) (using [ absadiki/pywhispercpp](https://github.com/absadiki/pywhispercpp))
     * > High-performance inference of OpenAI's Whisper automatic speech recognition (ASR) model
       > * Plain C/C++ implementation without dependencies
       > * Runs on the CPU
@@ -104,7 +104,7 @@ _Quoted from the official openai/whisper installation_
 * Once ffmpeg is installed, install `subsai`
 
 ```shell
-pip install git+https://github.com/abdeladim-s/subsai
+pip install git+https://github.com/absadiki/subsai
 ```
 
 # Usage
@@ -177,16 +177,16 @@ model = subs_ai.create_model('openai/whisper', {'model_type': 'base'})
 subs = subs_ai.transcribe(file, model)
 subs.save('test1.srt')
 ```
-For more advanced usage, read [the documentation](https://abdeladim-s.github.io/subsai/).
+For more advanced usage, read [the documentation](https://absadiki.github.io/subsai/).
 
 ### Examples 
-Simple examples can be found in the [examples](https://github.com/abdeladim-s/subsai/tree/main/examples) folder
+Simple examples can be found in the [examples](https://github.com/absadiki/subsai/tree/main/examples) folder
 
-* [VAD example](https://github.com/abdeladim-s/subsai/blob/main/examples/subsai_vad.ipynb): process long audio files using [silero-vad](https://github.com/snakers4/silero-vad). <a target="_blank" href="https://colab.research.google.com/github/abdeladim-s/subsai/blob/main/examples/subsai_vad.ipynb">
+* [VAD example](https://github.com/absadiki/subsai/blob/main/examples/subsai_vad.ipynb): process long audio files using [silero-vad](https://github.com/snakers4/silero-vad). <a target="_blank" href="https://colab.research.google.com/github/absadiki/subsai/blob/main/examples/subsai_vad.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
 
-* [Translation example](https://github.com/abdeladim-s/subsai/blob/main/examples/subsai_translation.ipynb): translate an already existing subtitles file. <a target="_blank" href="https://colab.research.google.com/github/abdeladim-s/subsai/blob/main/examples/subsai_translation.ipynb">
+* [Translation example](https://github.com/absadiki/subsai/blob/main/examples/subsai_translation.ipynb): translate an already existing subtitles file. <a target="_blank" href="https://colab.research.google.com/github/absadiki/subsai/blob/main/examples/subsai_translation.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
 
@@ -200,7 +200,7 @@ Simple examples can be found in the [examples](https://github.com/abdeladim-s/su
 
 # Notes
 * If you have an NVIDIA graphics card, you may need to install [cuda](https://docs.nvidia.com/cuda/#installation-guides) to use the GPU capabilities.
-* AMD GPUs compatible with Pytorch should be working as well. [#67](https://github.com/abdeladim-s/subsai/issues/67) 
+* AMD GPUs compatible with Pytorch should be working as well. [#67](https://github.com/absadiki/subsai/issues/67) 
 * Transcription time is shown on the terminal, keep an eye on it while running the web UI. 
 * If you didn't like Dark mode web UI, you can switch to Light mode from `settings > Theme > Light`.
 

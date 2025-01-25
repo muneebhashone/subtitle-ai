@@ -28,8 +28,8 @@ from subsai.utils import available_subs_formats
 from streamlit.web import cli as stcli
 from tempfile import NamedTemporaryFile
 
-__author__ = "abdeladim-s"
-__contact__ = "https://github.com/abdeladim-s"
+__author__ = "absadiki"
+__contact__ = "https://github.com/absadiki"
 __copyright__ = "Copyright 2023,"
 __deprecated__ = False
 __license__ = "GPLv3"
@@ -235,7 +235,7 @@ footer = """
 <div id="page-container">
     <div class="footer">
         <p style='font-size: 0.875em;'>
-        Made with ❤ by <a style='display: inline; text-align: left;' href="https://github.com/abdeladim-s" target="_blank">abdeladim-s</a></p>
+        Made with ❤ by <a style='display: inline; text-align: left;' href="https://github.com/absadiki" target="_blank">absadiki</a></p>
     </div>
 </div>
 """
@@ -249,9 +249,9 @@ def webui() -> None:
     st.set_page_config(page_title='Subs AI',
                        page_icon="🎞️",
                        menu_items={
-                           'Get Help': 'https://github.com/abdeladim-s/subsai',
-                           'Report a bug': "https://github.com/abdeladim-s/subsai/issues",
-                           'About': f"### [Subs AI](https://github.com/abdeladim-s/subsai) \nv{__version__} "
+                           'Get Help': 'https://github.com/absadiki/subsai',
+                           'Report a bug': "https://github.com/absadiki/subsai/issues",
+                           'About': f"### [Subs AI](https://github.com/absadiki/subsai) \nv{__version__} "
                                     f"\n \nLicense: GPLv3"
                        },
                        layout="wide",
@@ -265,10 +265,10 @@ def webui() -> None:
     st.info(
         "This is an open source project and you are very welcome to **contribute** your awesome "
         "comments, questions, ideas through "
-        "[discussions](https://github.com/abdeladim-s/subsai/discussions), "
-        "[issues](https://github.com/abdeladim-s/subsai/issues) and "
-        "[pull requests](https://github.com/abdeladim-s/subsai/pulls) "
-        "to the [project repository](https://github.com/abdeladim-s/subsai/). "
+        "[discussions](https://github.com/absadiki/subsai/discussions), "
+        "[issues](https://github.com/absadiki/subsai/issues) and "
+        "[pull requests](https://github.com/absadiki/subsai/pulls) "
+        "to the [project repository](https://github.com/absadiki/subsai/). "
     )
 
     if 'transcribed_subs' in st.session_state:

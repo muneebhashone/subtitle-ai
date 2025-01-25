@@ -63,6 +63,20 @@ class StableTsModel(AbstractModel):
             'options': None,
             'default': None
         },
+        'word_timestamps': {
+            'type': bool,
+            'description': 'Extract word-level timestamps using the cross-attention pattern'
+                           'and dynamic time warping, and include the timestamps for each word in each segment.',
+            'options': None,
+            'default': False
+        },
+        'word_tags': {
+            'type': str,
+            'description': 'When word_timestamps is True, you can use this option to wrap each word with specified tags for styling, e.g., <font color="#FFB600">,</font>. '
+                           'Separate open and close tags with a comma. Leave empty to display words on separate lines.',
+            'options': None,
+            'default': '<font color="#FFB600">,</font>'
+        },
         'temperature': {
             'type': Tuple,
             'description': "Temperature for sampling. It can be a tuple of temperatures, which will be "
@@ -104,13 +118,6 @@ class StableTsModel(AbstractModel):
             'description': 'Optional text to provide as a prompt for the first window.',
             'options': None,
             'default': None
-        },
-        'word_timestamps': {
-            'type': bool,
-            'description': 'Extract word-level timestamps using the cross-attention pattern'
-                           'and dynamic time warping, and include the timestamps for each word in each segment.',
-            'options': None,
-            'default': True
         },
         'regroup': {
             'type': bool,
@@ -410,6 +417,7 @@ class StableTsModel(AbstractModel):
         self._condition_on_previous_text = _load_config('condition_on_previous_text', model_config, self.config_schema)
         self._initial_prompt = _load_config('initial_prompt', model_config, self.config_schema)
         self._word_timestamps = _load_config('word_timestamps', model_config, self.config_schema)
+        self._word_tags = _load_config('word_tags', model_config, self.config_schema)
         self._regroup = _load_config('regroup', model_config, self.config_schema)
         self._ts_num = _load_config('ts_num', model_config, self.config_schema)
         self._ts_noise = _load_config('ts_noise', model_config, self.config_schema)
@@ -474,7 +482,7 @@ class StableTsModel(AbstractModel):
                                    k_size=self._k_size,
                                    time_scale=self._time_scale,
                                    demucs=self._demucs,
-                                   demucs_output=self._demucs_output,
+                                   # demucs_output=self._demucs_output,
                                    demucs_options=self._demucs_options,
                                    vad=self._vad,
                                    vad_threshold=self._vad_threshold,
@@ -500,7 +508,12 @@ class StableTsModel(AbstractModel):
                 for word in segment.words:
                     try:
                         event = SSAEvent(start=pysubs2.make_time(s=word.start), end=pysubs2.make_time(s=word.end))
-                        event.plaintext = word.word.strip()
+                        print(f"word tags: {self._word_tags}")
+                        if self._word_tags != '' and self._word_tags is not None:
+                            opening_tag, closing_tag = self._word_tags.split(',')
+                            event.plaintext = segment.text.replace(word.word, f'{opening_tag}{word.word}{closing_tag}')
+                        else:
+                            event.plaintext = word.word.strip()
                         subs.append(event)
                     except Exception as e:
                         logging.warning(f"Something wrong with {word}")

@@ -508,7 +508,6 @@ class StableTsModel(AbstractModel):
                 for word in segment.words:
                     try:
                         event = SSAEvent(start=pysubs2.make_time(s=word.start), end=pysubs2.make_time(s=word.end))
-                        print(f"word tags: {self._word_tags}")
                         if self._word_tags != '' and self._word_tags is not None:
                             opening_tag, closing_tag = self._word_tags.split(',')
                             event.plaintext = segment.text.replace(word.word, f'{opening_tag}{word.word}{closing_tag}')

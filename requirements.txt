@@ -16,3 +16,4 @@ transformers==4.48.1
 numpy<2
 torch==2.2.0
 torchaudio==2.2.0
+pydub==0.25.1

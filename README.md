@@ -106,6 +106,9 @@ _Quoted from the official openai/whisper installation_
 ```shell
 pip install git+https://github.com/absadiki/subsai
 ```
+> [!NOTE]
+> If torch is unable to detect your GPU devices during your usage of subsai, assuming you have a supported GPU device, there is a chance that `pip` installed the CPU version of torch. You can install a torch version with CUDA support by following the [get started locally guide](https://pytorch.org/get-started/locally/) on pytorch.
+> For more information, see https://github.com/absadiki/subsai/issues/162.
 
 # Usage
 ### Web-UI

@@ -49,7 +49,7 @@ class WhisperAPIModel(AbstractModel):
                 'type': list,
                 'description': "OpenAI Whisper API, currently only supports large-v2 which is named as whisper-1/ \
                                 There is a 25mb upload limit so audio is chunked locally, this may lead to lower performance.",
-                'options': ['whisper-1'],
+                'options': ['whisper-1', 'gpt-4o-mini-transcribe', 'gpt-4o-transcribe'],
                 'default': 'whisper-1'
             },
             'api_key': {

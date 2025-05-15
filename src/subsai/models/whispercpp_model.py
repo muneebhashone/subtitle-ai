@@ -149,7 +149,7 @@ class WhisperCppModel(AbstractModel):
                 'type': str,
                 'description': 'for auto-detection, set to None, "" or "auto"',
                 'options': None,
-                'default': 'en'
+                'default': ''
             },
             'suppress_blank': {
                 'type': bool,

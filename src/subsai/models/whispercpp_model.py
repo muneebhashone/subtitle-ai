@@ -147,9 +147,9 @@ class WhisperCppModel(AbstractModel):
             },
             'language': {
                 'type': str,
-                'description': 'for auto-detection, set to None, "" or "auto"',
+                'description': 'for auto-detection, set it to empty string ""',
                 'options': None,
-                'default': ''
+                'default': '""'
             },
             'suppress_blank': {
                 'type': bool,

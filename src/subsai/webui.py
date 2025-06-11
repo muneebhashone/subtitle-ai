@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Subs AI Web User Interface (webui)
+AI Transcription Tool Web User Interface (webui)
 """
 
 import importlib
@@ -29,7 +29,7 @@ from streamlit.web import cli as stcli
 from tempfile import NamedTemporaryFile
 
 __author__ = "absadiki"
-__contact__ = "https://github.com/absadiki"
+__contact__ = ""
 __copyright__ = "Copyright 2023,"
 __deprecated__ = False
 __license__ = "GPLv3"
@@ -235,7 +235,7 @@ footer = """
 <div id="page-container">
     <div class="footer">
         <p style='font-size: 0.875em;'>
-        Made with ❤ by <a style='display: inline; text-align: left;' href="https://github.com/absadiki" target="_blank">absadiki</a></p>
+        Made with ❤</p>
     </div>
 </div>
 """
@@ -246,30 +246,20 @@ def webui() -> None:
     main web UI
     :return: None
     """
-    st.set_page_config(page_title='Subs AI',
+    st.set_page_config(page_title='AI Transcription Tool',
                        page_icon="🎞️",
                        menu_items={
-                           'Get Help': 'https://github.com/absadiki/subsai',
-                           'Report a bug': "https://github.com/absadiki/subsai/issues",
-                           'About': f"### [Subs AI](https://github.com/absadiki/subsai) \nv{__version__} "
+                           'About': f"### AI Transcription Tool \nv{__version__} "
                                     f"\n \nLicense: GPLv3"
                        },
                        layout="wide",
                        initial_sidebar_state='auto')
 
-    st.markdown(f"# Subs AI 🎞️")
+    st.markdown(f"# AI Transcription Tool 🎞️")
     st.markdown(
         "### Subtitles generation tool powered by OpenAI's [Whisper](https://github.com/openai/whisper) and its "
         "variants.")
     st.sidebar.title("Settings")
-    st.info(
-        "This is an open source project and you are very welcome to **contribute** your awesome "
-        "comments, questions, ideas through "
-        "[discussions](https://github.com/absadiki/subsai/discussions), "
-        "[issues](https://github.com/absadiki/subsai/issues) and "
-        "[pull requests](https://github.com/absadiki/subsai/pulls) "
-        "to the [project repository](https://github.com/absadiki/subsai/). "
-    )
 
     if 'transcribed_subs' in st.session_state:
         subs = st.session_state['transcribed_subs']

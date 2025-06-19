@@ -93,7 +93,31 @@ class SubsAI:
 
         :return: the model instance
         """
-        return AVAILABLE_MODELS[model_name]['class'](model_config)
+        # For Hebrew models using HuggingFaceModel, set the model_id to the model_name
+        hebrew_models = [
+            'ivrit-ai/whisper-large-v2-tuned',
+            'ivrit-ai/whisper-large-v3', 
+            'Shiry/whisper-large-v2-he',
+            'imvladikon/wav2vec2-large-xlsr-53-hebrew',
+        ]
+        
+        # For faster-whisper Hebrew model, set model_size_or_path
+        faster_whisper_hebrew_models = [
+            'sivan22/faster-whisper-ivrit-ai-whisper-large-v2-tuned',
+        ]
+        
+        # Create a copy of model_config to avoid modifying the original
+        config = model_config.copy()
+        
+        # If this is a Hebrew HuggingFace model and model_id is not explicitly set, use the model_name
+        if model_name in hebrew_models and 'model_id' not in config:
+            config['model_id'] = model_name
+            
+        # If this is a Hebrew faster-whisper model and model_size_or_path is not explicitly set, use the model_name
+        if model_name in faster_whisper_hebrew_models and 'model_size_or_path' not in config:
+            config['model_size_or_path'] = model_name
+        
+        return AVAILABLE_MODELS[model_name]['class'](config)
 
     @staticmethod
     def transcribe(media_file: str, model: Union[AbstractModel, str], model_config: dict = {}) -> SSAFile:

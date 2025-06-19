@@ -112,6 +112,9 @@ class HuggingFaceModel(AbstractModel):
             if self._language is None:
                 self._language = 'hebrew'
 
+        # Detect model type for different handling
+        self.is_wav2vec2 = 'wav2vec2' in self._model_id.lower()
+
         self.model = pipeline(
             "automatic-speech-recognition",
             model=self._model_id,
@@ -125,23 +128,105 @@ class HuggingFaceModel(AbstractModel):
         else:
             audio_file = media_file
         
-        # Prepare generation kwargs for language and task settings
-        generate_kwargs = {}
-        if self._language:
-            generate_kwargs['language'] = self._language
-        if self._task:
-            generate_kwargs['task'] = self._task
+        # Handle wav2vec2 models differently (CTC-based, not generative)
+        if self.is_wav2vec2:
+            # wav2vec2 models only support 'char' or 'word' for return_timestamps
+            timestamp_type = 'word' if self.segment_type == 'sentence' else 'word'
+            results = self.model(
+                audio_file,
+                chunk_length_s=self._chunk_length_s,
+                return_timestamps=timestamp_type,
+            )
+        else:
+            # Handle Whisper-based models (generative)
+            generate_kwargs = {}
+            if self._language:
+                generate_kwargs['language'] = self._language
+            if self._task:
+                generate_kwargs['task'] = self._task
 
-        results = self.model(
-            audio_file,
-            chunk_length_s=self._chunk_length_s,
-            return_timestamps=True if self.segment_type == 'sentence' else 'word',
-            generate_kwargs=generate_kwargs if generate_kwargs else None,
-        )
+            # For ivrit-ai models, force Hebrew language in generate_kwargs
+            if 'ivrit-ai' in self._model_id.lower() and not generate_kwargs.get('language'):
+                generate_kwargs['language'] = 'hebrew'
+            
+            try:
+                results = self.model(
+                    audio_file,
+                    chunk_length_s=self._chunk_length_s,
+                    return_timestamps=True if self.segment_type == 'sentence' else 'word',
+                    generate_kwargs=generate_kwargs if generate_kwargs else None,
+                )
+            except Exception as e:
+                print(f"Error with generate_kwargs, trying without: {e}")
+                # Fallback: try without generate_kwargs for problematic models
+                results = self.model(
+                    audio_file,
+                    chunk_length_s=self._chunk_length_s,
+                    return_timestamps=True if self.segment_type == 'sentence' else 'word',
+                )
+        
         subs = SSAFile()
-        for chunk in results['chunks']:
-            event = SSAEvent(start=pysubs2.make_time(s=chunk['timestamp'][0]),
-                             end=pysubs2.make_time(s=chunk['timestamp'][1]))
-            event.plaintext = chunk['text']
-            subs.append(event)
+        
+        def clean_text(text):
+            """Remove special tokens and clean text"""
+            if not text:
+                return ""
+            # Remove common special tokens
+            special_tokens = ['[PAD]', '<pad>', '</s>', '<s>', '[UNK]', '<unk>', '[CLS]', '[SEP]']
+            for token in special_tokens:
+                text = text.replace(token, '')
+            return text.strip()
+        
+        # Handle wav2vec2 results (CTC-based models)
+        if self.is_wav2vec2:
+            if 'chunks' in results and results['chunks']:
+                for chunk in results['chunks']:
+                    text = clean_text(chunk.get('text', ''))
+                    if text:  # Only add non-empty text
+                        timestamp = chunk.get('timestamp', [0.0, 1.0])
+                        start_time = timestamp[0] if timestamp[0] is not None else 0.0
+                        end_time = timestamp[1] if timestamp[1] is not None else start_time + 1.0
+                        
+                        event = SSAEvent(start=pysubs2.make_time(s=start_time),
+                                         end=pysubs2.make_time(s=end_time))
+                        event.plaintext = text
+                        subs.append(event)
+            else:
+                # Single result format for wav2vec2
+                text = clean_text(results.get('text', ''))
+                if text:
+                    event = SSAEvent(start=pysubs2.make_time(s=0.0), 
+                                     end=pysubs2.make_time(s=len(text) * 0.1))
+                    event.plaintext = text
+                    subs.append(event)
+        
+        # Handle Whisper results (generative models)
+        else:
+            if 'chunks' in results and results['chunks']:
+                for i, chunk in enumerate(results['chunks']):
+                    # Handle various timestamp formats
+                    timestamp = chunk.get('timestamp', [None, None])
+                    if timestamp and len(timestamp) >= 2:
+                        start_time = timestamp[0] if timestamp[0] is not None else 0.0
+                        end_time = timestamp[1] if timestamp[1] is not None else start_time + 1.0
+                    else:
+                        # Fallback timestamps based on chunk index
+                        start_time = float(i)
+                        end_time = float(i + 1)
+                    
+                    text = clean_text(chunk.get('text', ''))
+                    if text:  # Only add non-empty text
+                        event = SSAEvent(start=pysubs2.make_time(s=start_time),
+                                         end=pysubs2.make_time(s=end_time))
+                        event.plaintext = text
+                        subs.append(event)
+            else:
+                # Handle single result format
+                text = clean_text(results.get('text', ''))
+                if text:
+                    event = SSAEvent(start=pysubs2.make_time(s=0.0), 
+                                     end=pysubs2.make_time(s=len(text) * 0.1))
+                    event.plaintext = text
+                    subs.append(event)
+        
         return subs

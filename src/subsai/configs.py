@@ -77,6 +77,45 @@ AVAILABLE_MODELS = {
         'url': 'https://huggingface.co/tasks/automatic-speech-recognition',
         'config_schema': HuggingFaceModel.config_schema,
     },
+    'ivrit-ai/whisper-large-v2-tuned': {
+        'class': HuggingFaceModel,
+        'description': 'Hebrew fine-tuned Whisper Large v2 model by ivrit-ai. '
+                       'Optimized for Hebrew speech recognition with significantly improved accuracy for Hebrew audio. '
+                       'Fine-tuned using crowd-sourced Hebrew labeling.',
+        'url': 'https://huggingface.co/ivrit-ai/whisper-large-v2-tuned',
+        'config_schema': HuggingFaceModel.config_schema,
+    },
+    'ivrit-ai/whisper-large-v3': {
+        'class': HuggingFaceModel,
+        'description': 'Hebrew fine-tuned Whisper Large v3 model by ivrit-ai. '
+                       'Latest version with improved Hebrew ASR performance. '
+                       'Language detection capability degraded - intended for mostly Hebrew audio transcription.',
+        'url': 'https://huggingface.co/ivrit-ai/whisper-large-v3',
+        'config_schema': HuggingFaceModel.config_schema,
+    },
+    'Shiry/whisper-large-v2-he': {
+        'class': HuggingFaceModel,
+        'description': 'Hebrew Whisper Large v2 model fine-tuned on Google Fleurs Hebrew dataset. '
+                       'Good performance for Hebrew speech recognition tasks.',
+        'url': 'https://huggingface.co/Shiry/whisper-large-v2-he',
+        'config_schema': HuggingFaceModel.config_schema,
+    },
+    'imvladikon/wav2vec2-large-xlsr-53-hebrew': {
+        'class': HuggingFaceModel,
+        'description': 'Hebrew Wav2Vec2 model based on XLSR-53 architecture. '
+                       'Alternative to Whisper for Hebrew speech recognition, fine-tuned on Hebrew YouTube samples. '
+                       'Requires 16kHz audio input.',
+        'url': 'https://huggingface.co/imvladikon/wav2vec2-large-xlsr-53-hebrew',
+        'config_schema': HuggingFaceModel.config_schema,
+    },
+    'sivan22/faster-whisper-ivrit-ai-whisper-large-v2-tuned': {
+        'class': FasterWhisperModel,
+        'description': 'Hebrew fine-tuned Faster-Whisper model optimized for speed and Hebrew accuracy. '
+                       'Based on ivrit-ai whisper-large-v2 with CTranslate2 optimization for 4x faster inference. '
+                       'Ideal for production Hebrew speech recognition with lower memory usage.',
+        'url': 'https://huggingface.co/sivan22/faster-whisper-ivrit-ai-whisper-large-v2-tuned',
+        'config_schema': FasterWhisperModel.config_schema,
+    },
 }
 
 BASIC_TOOLS_CONFIGS = {
@@ -277,4 +316,48 @@ ADVANCED_TOOLS_CONFIGS = {
         }
     },
 
+}
+
+# S3 Storage Configuration
+S3_CONFIG_SCHEMA = {
+    'enabled': {
+        'type': bool,
+        'description': 'Enable S3 storage for subtitles',
+        'default': False
+    },
+    'bucket_name': {
+        'type': str,
+        'description': 'S3 bucket name for storing subtitles',
+        'default': ''
+    },
+    'region': {
+        'type': str,
+        'description': 'AWS region for S3 bucket',
+        'default': 'us-east-1'
+    },
+    'access_key': {
+        'type': str,
+        'description': 'AWS access key (optional if using IAM roles)',
+        'default': ''
+    },
+    'secret_key': {
+        'type': str,
+        'description': 'AWS secret key (optional if using IAM roles)', 
+        'default': ''
+    },
+    'default_project': {
+        'type': str,
+        'description': 'Default project folder name',
+        'default': 'default'
+    }
+}
+
+# Default S3 configuration
+DEFAULT_S3_CONFIG = {
+    'enabled': False,
+    'bucket_name': '',
+    'region': 'us-east-1',
+    'access_key': '',
+    'secret_key': '',
+    'default_project': 'default'
 }

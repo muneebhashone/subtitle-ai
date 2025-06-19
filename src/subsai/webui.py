@@ -79,13 +79,29 @@ def _render_s3_config_ui():
             key='s3_bucket_name'
         )
         
-        region = st.selectbox(
-            "AWS Region",
-            options=['us-east-1', 'us-west-1', 'us-west-2', 'eu-west-1', 'eu-central-1', 'ap-southeast-1'],
+        region_mode = st.radio(
+            "Region input mode",
+            options=['Select from list', 'Custom'],
             index=0,
-            help="AWS region where your bucket is located",
-            key='s3_region'
+            help="Choose from common regions or enter a custom region",
+            key='s3_region_mode'
         )
+        
+        if region_mode == 'Select from list':
+            region = st.selectbox(
+                "AWS Region",
+                options=['us-east-1', 'us-west-1', 'us-west-2', 'eu-west-1', 'eu-central-1', 'ap-southeast-1'],
+                index=0,
+                help="AWS region where your bucket is located",
+                key='s3_region'
+            )
+        else:
+            region = st.text_input(
+                "Custom AWS Region",
+                value=st.session_state.get('s3_region_custom', 'us-east-1'),
+                help="Enter AWS region code (e.g., us-east-1, eu-west-2, ap-south-1)",
+                key='s3_region_custom'
+            )
         
         # Credentials section
         st.write("**AWS Credentials** (optional if using IAM roles)")

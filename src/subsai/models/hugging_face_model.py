@@ -45,6 +45,19 @@ class HuggingFaceModel(AbstractModel):
                            'The input length for in each chunk. If `chunk_length_s = 0` then chunking is disabled (default).',
             'options': None,
             'default': 30
+        },
+        'language': {
+            'type': str,
+            'description': 'Language to force for transcription (e.g., "hebrew", "he"). '
+                           'Leave empty for automatic detection. Required for Hebrew-specific models.',
+            'options': None,
+            'default': None
+        },
+        'task': {
+            'type': list,
+            'description': 'Task to perform: transcribe or translate',
+            'options': ['transcribe', 'translate'],
+            'default': 'transcribe'
         }
     }
 
@@ -56,7 +69,13 @@ class HuggingFaceModel(AbstractModel):
         self._device = _load_config('device', model_config, self.config_schema)
         self.segment_type = _load_config('segment_type', model_config, self.config_schema)
         self._chunk_length_s = _load_config('chunk_length_s', model_config, self.config_schema)
+        self._language = _load_config('language', model_config, self.config_schema)
+        self._task = _load_config('task', model_config, self.config_schema)
 
+        # Auto-detect Hebrew models and set default language
+        if 'hebrew' in self._model_id.lower() or 'ivrit' in self._model_id.lower() or 'he' in self._model_id.lower():
+            if self._language is None:
+                self._language = 'hebrew'
 
         self.model = pipeline(
             "automatic-speech-recognition",
@@ -65,10 +84,18 @@ class HuggingFaceModel(AbstractModel):
         )
 
     def transcribe(self, media_file):
+        # Prepare generation kwargs for language and task settings
+        generate_kwargs = {}
+        if self._language:
+            generate_kwargs['language'] = self._language
+        if self._task:
+            generate_kwargs['task'] = self._task
+
         results = self.model(
             media_file,
             chunk_length_s=self._chunk_length_s,
             return_timestamps=True if self.segment_type == 'sentence' else 'word',
+            generate_kwargs=generate_kwargs if generate_kwargs else None,
         )
         subs = SSAFile()
         for chunk in results['chunks']:

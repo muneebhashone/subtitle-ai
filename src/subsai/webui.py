@@ -23,8 +23,9 @@ from streamlit_player import st_player
 from st_aggrid import AgGrid, GridUpdateMode, GridOptionsBuilder, DataReturnMode
 
 from subsai import SubsAI, Tools
-from subsai.configs import ADVANCED_TOOLS_CONFIGS
+from subsai.configs import ADVANCED_TOOLS_CONFIGS, DEFAULT_S3_CONFIG, S3_CONFIG_SCHEMA
 from subsai.utils import available_subs_formats
+from subsai.storage.s3_storage import create_s3_storage
 from streamlit.web import cli as stcli
 from tempfile import NamedTemporaryFile
 
@@ -37,6 +38,98 @@ __version__ = importlib.metadata.version('subsai')
 
 subs_ai = SubsAI()
 tools = Tools()
+
+
+def _init_s3_config():
+    """Initialize S3 configuration in session state."""
+    if 's3_config' not in st.session_state:
+        st.session_state['s3_config'] = DEFAULT_S3_CONFIG.copy()
+
+
+def _get_s3_config_from_session_state() -> dict:
+    """Get S3 configuration from session state."""
+    config = {}
+    for config_name in S3_CONFIG_SCHEMA:
+        key = f"s3_{config_name}"
+        if key in st.session_state:
+            config[config_name] = st.session_state[key]
+        else:
+            config[config_name] = S3_CONFIG_SCHEMA[config_name]['default']
+    return config
+
+
+def _render_s3_config_ui():
+    """Render S3 configuration UI in sidebar."""
+    st.subheader("☁️ S3 Storage")
+    
+    # Enable/disable S3
+    s3_enabled = st.checkbox(
+        "Enable S3 Storage", 
+        value=st.session_state.get('s3_enabled', False),
+        help="Save subtitles to Amazon S3 bucket",
+        key='s3_enabled'
+    )
+    
+    if s3_enabled:
+        # S3 Configuration fields
+        bucket_name = st.text_input(
+            "S3 Bucket Name",
+            value=st.session_state.get('s3_bucket_name', ''),
+            help="Name of your S3 bucket",
+            key='s3_bucket_name'
+        )
+        
+        region = st.selectbox(
+            "AWS Region",
+            options=['us-east-1', 'us-west-1', 'us-west-2', 'eu-west-1', 'eu-central-1', 'ap-southeast-1'],
+            index=0,
+            help="AWS region where your bucket is located",
+            key='s3_region'
+        )
+        
+        # Credentials section
+        st.write("**AWS Credentials** (optional if using IAM roles)")
+        access_key = st.text_input(
+            "Access Key",
+            value=st.session_state.get('s3_access_key', ''),
+            type="password",
+            help="AWS Access Key ID",
+            key='s3_access_key'
+        )
+        
+        secret_key = st.text_input(
+            "Secret Key", 
+            value=st.session_state.get('s3_secret_key', ''),
+            type="password",
+            help="AWS Secret Access Key",
+            key='s3_secret_key'
+        )
+        
+        # Test connection button
+        if bucket_name:
+            if st.button("🔍 Test S3 Connection"):
+                with st.spinner("Testing S3 connection..."):
+                    s3_config = {
+                        'enabled': True,
+                        'bucket_name': bucket_name,
+                        'region': region,
+                        'access_key': access_key if access_key else None,
+                        'secret_key': secret_key if secret_key else None
+                    }
+                    
+                    s3_storage = create_s3_storage(s3_config)
+                    if s3_storage:
+                        result = s3_storage.validate_connection()
+                        if result['success']:
+                            st.success(f"✅ {result['message']}")
+                        else:
+                            st.error(f"❌ {result['message']}")
+                    else:
+                        st.error("❌ Failed to create S3 storage client")
+        else:
+            st.info("💡 Enter bucket name to test connection")
+    
+    return s3_enabled
 
 
 def _get_key(model_name: str, config_name: str) -> str:
@@ -307,6 +400,11 @@ def webui() -> None:
             else:
                 configs_path = st.text_input('Configs path', help='Absolute path of the configs file')
 
+        # S3 Configuration Panel
+        with st.sidebar.expander('S3 Storage', expanded=False):
+            _init_s3_config()
+            s3_enabled = _render_s3_config_ui()
+
         transcribe_button = st.button('Transcribe', type='primary')
         transcribe_loading_placeholder = st.empty()
 
@@ -507,19 +605,86 @@ def webui() -> None:
             "Format",
             available_subs_formats())
         export_filename = st.text_input('Filename', value=media_file.stem)
+        
+        # S3 Export Options
+        s3_enabled = st.session_state.get('s3_enabled', False)
+        if s3_enabled and st.session_state.get('s3_bucket_name', ''):
+            st.write("**Storage Options**")
+            col1, col2 = st.columns(2)
+            with col1:
+                save_local = st.checkbox('Save locally', value=True, help='Save file to local directory')
+            with col2:
+                save_s3 = st.checkbox('Save to S3', value=True, help='Upload file to S3 bucket')
+            
+            if save_s3:
+                # Project name input with smart default
+                project_name = st.text_input(
+                    'S3 Project folder', 
+                    value=media_file.stem,
+                    help='Folder name in S3 bucket (will be prefilled with media filename)'
+                )
+                
+                # S3 path preview
+                bucket_name = st.session_state.get('s3_bucket_name', '')
+                s3_preview_path = f"s3://{bucket_name}/{project_name}/{export_filename}{export_format}"
+                st.info(f"📍 S3 Path: `{s3_preview_path}`")
+        else:
+            save_local = True
+            save_s3 = False
+            project_name = ""
+        
         if export_format == '.sub':
             fps = st.number_input('Framerate', help='Framerate must be specified when writing MicroDVD')
         else:
             fps = None
+            
         submitted = st.button("Export")
         if submitted:
             try:
                 subs = st.session_state['transcribed_subs']
-                exported_file = media_file.parent / (export_filename + export_format)
-                subs.save(exported_file, fps=fps)
-                st.success(f'Exported file to {exported_file}', icon="✅")
-                with open(exported_file, 'r', encoding='utf-8') as f:
-                    st.download_button('Download', f, file_name=export_filename + export_format)
+                export_results = []
+                
+                # Local save
+                if save_local:
+                    exported_file = media_file.parent / (export_filename + export_format)
+                    subs.save(exported_file, fps=fps)
+                    export_results.append(f"💾 Local: {exported_file}")
+                
+                # S3 save
+                if save_s3 and s3_enabled:
+                    with st.spinner("Uploading to S3..."):
+                        s3_config = _get_s3_config_from_session_state()
+                        s3_storage = create_s3_storage(s3_config)
+                        
+                        if s3_storage:
+                            # Get subtitle content as string
+                            subtitle_content = subs.to_string(format_=export_format[1:])  # Remove dot from format
+                            
+                            result = s3_storage.upload_subtitle(
+                                subtitle_content=subtitle_content,
+                                project_name=project_name,
+                                filename=export_filename,
+                                subtitle_format=export_format[1:]  # Remove dot
+                            )
+                            
+                            if result['success']:
+                                export_results.append(f"☁️ S3: {result['s3_url']}")
+                            else:
+                                st.error(f"S3 upload failed: {result['message']}")
+                        else:
+                            st.error("Failed to create S3 storage client")
+                
+                # Show results
+                if export_results:
+                    st.success('✅ Export completed successfully!', icon="✅")
+                    for result in export_results:
+                        st.success(result)
+                    
+                    # Download button for local file
+                    if save_local:
+                        with open(exported_file, 'r', encoding='utf-8') as f:
+                            st.download_button('📥 Download Local File', f, file_name=export_filename + export_format)
+                
             except Exception as e:
                 st.error("Maybe you forgot to run the transcription! Please transcribe a media file first to export its transcription!")
                 st.error("See the terminal for more info!")

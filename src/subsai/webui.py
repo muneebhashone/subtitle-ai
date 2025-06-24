@@ -23,9 +23,10 @@ from streamlit_player import st_player
 from st_aggrid import AgGrid, GridUpdateMode, GridOptionsBuilder, DataReturnMode
 
 from subsai import SubsAI, Tools
-from subsai.configs import ADVANCED_TOOLS_CONFIGS, DEFAULT_S3_CONFIG, S3_CONFIG_SCHEMA
+from subsai.configs import ADVANCED_TOOLS_CONFIGS, DEFAULT_S3_CONFIG, S3_CONFIG_SCHEMA, DEFAULT_OOONA_CONFIG, OOONA_CONFIG_SCHEMA
 from subsai.utils import available_subs_formats
 from subsai.storage.s3_storage import create_s3_storage
+from subsai.storage.ooona_converter import create_ooona_converter
 from streamlit.web import cli as stcli
 from tempfile import NamedTemporaryFile
 
@@ -46,6 +47,12 @@ def _init_s3_config():
         st.session_state['s3_config'] = DEFAULT_S3_CONFIG.copy()
 
 
+def _init_ooona_config():
+    """Initialize OOONA configuration in session state."""
+    if 'ooona_config' not in st.session_state:
+        st.session_state['ooona_config'] = DEFAULT_OOONA_CONFIG.copy()
+
+
 def _get_s3_config_from_session_state() -> dict:
     """Get S3 configuration from session state."""
     config = {}
@@ -55,6 +62,18 @@ def _get_s3_config_from_session_state() -> dict:
             config[config_name] = st.session_state[key]
         else:
             config[config_name] = S3_CONFIG_SCHEMA[config_name]['default']
+    return config
+
+
+def _get_ooona_config_from_session_state() -> dict:
+    """Get OOONA configuration from session state."""
+    config = {}
+    for config_name in OOONA_CONFIG_SCHEMA:
+        key = f"ooona_{config_name}"
+        if key in st.session_state:
+            config[config_name] = st.session_state[key]
+        else:
+            config[config_name] = OOONA_CONFIG_SCHEMA[config_name]['default']
     return config
 
 
@@ -146,6 +165,93 @@ def _render_s3_config_ui():
             st.info("💡 Enter bucket name to test connection")
     
     return s3_enabled
+
+
+def _render_ooona_config_ui():
+    """Render OOONA API configuration UI in sidebar."""
+    st.subheader("🔄 OOONA API")
+    
+    # Enable/disable OOONA
+    ooona_enabled = st.checkbox(
+        "Enable OOONA Format", 
+        value=st.session_state.get('ooona_enabled', False),
+        help="Enable OOONA API for .ooona format conversion",
+        key='ooona_enabled'
+    )
+    
+    if ooona_enabled:
+        # OOONA API Configuration fields
+        base_url = st.text_input(
+            "API Base URL",
+            value=st.session_state.get('ooona_base_url', ''),
+            help="OOONA API base URL",
+            placeholder="https://api.ooona.com",
+            key='ooona_base_url'
+        )
+        
+        client_id = st.text_input(
+            "Client ID",
+            value=st.session_state.get('ooona_client_id', ''),
+            help="OOONA API client ID",
+            key='ooona_client_id'
+        )
+        
+        client_secret = st.text_input(
+            "Client Secret", 
+            value=st.session_state.get('ooona_client_secret', ''),
+            type="password",
+            help="OOONA API client secret",
+            key='ooona_client_secret'
+        )
+        
+        # Advanced settings
+        with st.expander("Advanced Settings (Optional)"):
+            input_format_template = st.text_input(
+                "Input Format Template ID",
+                value=st.session_state.get('ooona_input_format_template', ''),
+                help="Template ID for input format (leave empty for auto-detection)",
+                key='ooona_input_format_template'
+            )
+            
+            ooona_format_template = st.text_input(
+                "OOONA Format Template ID", 
+                value=st.session_state.get('ooona_ooona_format_template', ''),
+                help="Template ID for OOONA format (leave empty for auto-detection)",
+                key='ooona_ooona_format_template'
+            )
+        
+        # Test connection button
+        if base_url and client_id and client_secret:
+            if st.button("🔍 Test OOONA Connection"):
+                with st.spinner("Testing OOONA API connection..."):
+                    ooona_config = {
+                        'base_url': base_url,
+                        'client_id': client_id,
+                        'client_secret': client_secret
+                    }
+                    
+                    ooona_converter = create_ooona_converter(ooona_config)
+                    if ooona_converter:
+                        result = ooona_converter.validate_connection()
+                        if result['success']:
+                            st.success(f"✅ {result['message']}")
+                            
+                            # Show available formats
+                            formats_result = ooona_converter.get_format_templates()
+                            if formats_result['success']:
+                                formats = formats_result['formats']
+                                if 'ooona' in formats:
+                                    st.info(f"🎯 OOONA format available: {formats['ooona']['name']}")
+                                else:
+                                    st.warning("⚠️ OOONA format not found in available formats")
+                        else:
+                            st.error(f"❌ {result['message']}")
+                    else:
+                        st.error("❌ Failed to create OOONA converter client")
+        else:
+            st.info("💡 Enter API credentials to test connection")
+    
+    return ooona_enabled
 
 
 def _get_key(model_name: str, config_name: str) -> str:
@@ -421,6 +527,11 @@ def webui() -> None:
             _init_s3_config()
             s3_enabled = _render_s3_config_ui()
 
+        # OOONA Configuration Panel
+        with st.sidebar.expander('OOONA API', expanded=False):
+            _init_ooona_config()
+            ooona_enabled = _render_ooona_config_ui()
+
         transcribe_button = st.button('Transcribe', type='primary')
         transcribe_loading_placeholder = st.empty()
 
@@ -617,36 +728,46 @@ def webui() -> None:
 
     with st.expander('Export subtitles file'):
         media_file = Path(file_path)
+        
+        # Build format list (include .ooona if OOONA is enabled)
+        format_options = available_subs_formats()
+        ooona_enabled = st.session_state.get('ooona_enabled', False)
+        if ooona_enabled:
+            format_options = format_options + ['.ooona']
+        
         export_format = st.radio(
             "Format",
-            available_subs_formats())
+            format_options)
         export_filename = st.text_input('Filename', value=media_file.stem)
         
-        # S3 Export Options
-        s3_enabled = st.session_state.get('s3_enabled', False)
-        if s3_enabled and st.session_state.get('s3_bucket_name', ''):
-            st.write("**Storage Options**")
-            col1, col2 = st.columns(2)
-            with col1:
-                save_local = st.checkbox('Save locally', value=True, help='Save file to local directory')
-            with col2:
-                save_s3 = st.checkbox('Save to S3', value=True, help='Upload file to S3 bucket')
+        # Export Options
+        st.write("**Export Options**")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            enable_download = st.checkbox('Enable download', value=True, help='Download file directly to your browser')
+        with col2:
+            save_local = st.checkbox('Save locally', value=False, help='Save file to local directory')
+        with col3:
+            s3_enabled = st.session_state.get('s3_enabled', False)
+            if s3_enabled and st.session_state.get('s3_bucket_name', ''):
+                save_s3 = st.checkbox('Save to S3', value=False, help='Upload file to S3 bucket')
+            else:
+                save_s3 = False
+        
+        # S3 Configuration (only show if S3 is enabled and selected)
+        if save_s3:
+            # Project name input with smart default
+            project_name = st.text_input(
+                'S3 Project folder', 
+                value=media_file.stem,
+                help='Folder name in S3 bucket (will be prefilled with media filename)'
+            )
             
-            if save_s3:
-                # Project name input with smart default
-                project_name = st.text_input(
-                    'S3 Project folder', 
-                    value=media_file.stem,
-                    help='Folder name in S3 bucket (will be prefilled with media filename)'
-                )
-                
-                # S3 path preview
-                bucket_name = st.session_state.get('s3_bucket_name', '')
-                s3_preview_path = f"s3://{bucket_name}/{project_name}/{export_filename}{export_format}"
-                st.info(f"📍 S3 Path: `{s3_preview_path}`")
+            # S3 path preview
+            bucket_name = st.session_state.get('s3_bucket_name', '')
+            s3_preview_path = f"s3://{bucket_name}/{project_name}/{export_filename}{export_format}"
+            st.info(f"📍 S3 Path: `{s3_preview_path}`")
         else:
-            save_local = True
-            save_s3 = False
             project_name = ""
         
         if export_format == '.sub':
@@ -660,10 +781,62 @@ def webui() -> None:
                 subs = st.session_state['transcribed_subs']
                 export_results = []
                 
+                # Handle OOONA format conversion
+                if export_format == '.ooona':
+                    if not ooona_enabled:
+                        st.error("OOONA API is not enabled. Please configure OOONA API in the sidebar.")
+                        return
+                    
+                    # Get OOONA configuration
+                    ooona_config = _get_ooona_config_from_session_state()
+                    
+                    # Validate OOONA configuration
+                    required_fields = ['base_url', 'client_id', 'client_secret']
+                    missing_fields = [field for field in required_fields if not ooona_config.get(field)]
+                    if missing_fields:
+                        st.error(f"Missing OOONA configuration: {', '.join(missing_fields)}. Please configure in the sidebar.")
+                        return
+                    
+                    # Create OOONA converter
+                    ooona_converter = create_ooona_converter(ooona_config)
+                    if not ooona_converter:
+                        st.error("Failed to create OOONA converter. Please check your configuration.")
+                        return
+                    
+                    # Convert to OOONA format using API
+                    with st.spinner("Converting to OOONA format using API..."):
+                        # First generate SRT content (most compatible input format)
+                        input_content = subs.to_string(format_='srt')
+                        
+                        # Convert using OOONA API
+                        conversion_result = ooona_converter.convert_subtitle(
+                            subtitle_content=input_content,
+                            input_format='srt',
+                            output_format='ooona',
+                            input_config_id=ooona_config.get('input_format_template'),
+                            output_config_id=ooona_config.get('ooona_format_template')
+                        )
+                        
+                        if conversion_result['success']:
+                            subtitle_content = conversion_result['content']
+                            st.success("✅ Successfully converted to OOONA format")
+                        else:
+                            st.error(f"OOONA conversion failed: {conversion_result['message']}")
+                            return
+                else:
+                    # Generate subtitle content in memory for standard formats
+                    subtitle_content = subs.to_string(format_=export_format[1:])  # Remove dot from format
+                
                 # Local save
                 if save_local:
                     exported_file = media_file.parent / (export_filename + export_format)
-                    subs.save(exported_file, fps=fps)
+                    if export_format == '.ooona':
+                        # Write OOONA content directly to file
+                        with open(exported_file, 'w', encoding='utf-8') as f:
+                            f.write(subtitle_content)
+                    else:
+                        # Use standard pysubs2 save for other formats
+                        subs.save(exported_file, fps=fps)
                     export_results.append(f"💾 Local: {exported_file}")
                 
                 # S3 save
@@ -673,9 +846,6 @@ def webui() -> None:
                         s3_storage = create_s3_storage(s3_config)
                         
                         if s3_storage:
-                            # Get subtitle content as string
-                            subtitle_content = subs.to_string(format_=export_format[1:])  # Remove dot from format
-                            
                             result = s3_storage.upload_subtitle(
                                 subtitle_content=subtitle_content,
                                 project_name=project_name,
@@ -691,15 +861,22 @@ def webui() -> None:
                             st.error("Failed to create S3 storage client")
                 
                 # Show results
-                if export_results:
-                    st.success('✅ Export completed successfully!', icon="✅")
-                    for result in export_results:
-                        st.success(result)
+                if export_results or enable_download:
+                    if export_results:
+                        st.success('✅ Export completed successfully!', icon="✅")
+                        for result in export_results:
+                            st.success(result)
                     
-                    # Download button for local file
-                    if save_local:
-                        with open(exported_file, 'r', encoding='utf-8') as f:
-                            st.download_button('📥 Download Local File', f, file_name=export_filename + export_format)
+                    # Download button (always available when enabled)
+                    if enable_download:
+                        st.download_button(
+                            '📥 Download File', 
+                            data=subtitle_content,
+                            file_name=export_filename + export_format,
+                            mime='text/plain'
+                        )
+                else:
+                    st.warning("Please select at least one export option (Download, Save locally, or Save to S3)")
                 
             except Exception as e:
                 st.error("Maybe you forgot to run the transcription! Please transcribe a media file first to export its transcription!")

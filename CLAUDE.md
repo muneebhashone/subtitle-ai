@@ -127,3 +127,43 @@ s3://your-bucket/
 - AWS credentials (Access Key/Secret Key) or IAM role
 - Internet connectivity for uploads
 - boto3==1.38.39+ (latest as of June 2025)
+
+## OOONA API Integration
+
+### OOONA Converter Service
+- **Location**: `src/subsai/storage/ooona_converter.py`
+- **Purpose**: Convert subtitle formats to OOONA proprietary format via API
+- **Features**:
+  - Bearer token authentication with automatic refresh
+  - Format template management and validation
+  - SRT to .ooona conversion workflow
+  - Comprehensive error handling and logging
+
+### OOONA Configuration
+- **Location**: `src/subsai/configs.py` - `OOONA_CONFIG_SCHEMA` and `DEFAULT_OOONA_CONFIG`
+- **Settings**: API base URL, client credentials, optional template IDs
+- **UI Integration**: Sidebar configuration panel in web UI
+
+### OOONA Web UI Features
+- **Configuration Panel**:
+  - Enable/disable OOONA format toggle
+  - API base URL, client ID, and client secret inputs
+  - Advanced template ID settings (optional)
+  - Connection test functionality with format validation
+- **Export Options**:
+  - .ooona format automatically available when enabled
+  - Smart validation and error handling
+  - Full integration with download, local save, and S3 workflows
+
+### OOONA Conversion Workflow
+1. **Setup**: Configure OOONA API credentials in sidebar panel
+2. **Test**: Use "Test OOONA Connection" to validate API access
+3. **Export**: Select .ooona format for automatic API conversion
+4. **Process**: SRT → OOONA API → .ooona file output
+5. **Output**: Download, save locally, or upload to S3
+
+### OOONA Requirements
+- Valid OOONA API credentials (base URL, client ID, client secret)
+- Internet connectivity for API calls
+- requests library for HTTP client functionality
+- Compatible with all existing export options (download, local, S3)

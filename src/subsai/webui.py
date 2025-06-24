@@ -205,20 +205,20 @@ def _render_ooona_config_ui():
         )
         
         # Advanced settings
-        with st.expander("Advanced Settings (Optional)"):
-            input_format_template = st.text_input(
-                "Input Format Template ID",
-                value=st.session_state.get('ooona_input_format_template', ''),
-                help="Template ID for input format (leave empty for auto-detection)",
-                key='ooona_input_format_template'
-            )
-            
-            ooona_format_template = st.text_input(
-                "OOONA Format Template ID", 
-                value=st.session_state.get('ooona_ooona_format_template', ''),
-                help="Template ID for OOONA format (leave empty for auto-detection)",
-                key='ooona_ooona_format_template'
-            )
+        st.write("**Advanced Settings (Optional)**")
+        input_format_template = st.text_input(
+            "Input Format Template ID",
+            value=st.session_state.get('ooona_input_format_template', ''),
+            help="Template ID for input format (leave empty for auto-detection)",
+            key='ooona_input_format_template'
+        )
+        
+        ooona_format_template = st.text_input(
+            "OOONA Format Template ID", 
+            value=st.session_state.get('ooona_ooona_format_template', ''),
+            help="Template ID for OOONA format (leave empty for auto-detection)",
+            key='ooona_ooona_format_template'
+        )
         
         # Test connection button
         if base_url and client_id and client_secret:

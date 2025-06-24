@@ -361,3 +361,47 @@ DEFAULT_S3_CONFIG = {
     'secret_key': '',
     'default_project': 'default'
 }
+
+# OOONA API Configuration
+OOONA_CONFIG_SCHEMA = {
+    'enabled': {
+        'type': bool,
+        'description': 'Enable OOONA API for subtitle format conversion',
+        'default': False
+    },
+    'base_url': {
+        'type': str,
+        'description': 'OOONA API base URL',
+        'default': ''
+    },
+    'client_id': {
+        'type': str,
+        'description': 'OOONA API client ID',
+        'default': ''
+    },
+    'client_secret': {
+        'type': str,
+        'description': 'OOONA API client secret',
+        'default': ''
+    },
+    'input_format_template': {
+        'type': str,
+        'description': 'Default input format template ID (optional)',
+        'default': ''
+    },
+    'ooona_format_template': {
+        'type': str,
+        'description': 'OOONA format template ID (optional)',
+        'default': ''
+    }
+}
+
+# Default OOONA configuration
+DEFAULT_OOONA_CONFIG = {
+    'enabled': False,
+    'base_url': '',
+    'client_id': '',
+    'client_secret': '',
+    'input_format_template': '',
+    'ooona_format_template': ''
+}

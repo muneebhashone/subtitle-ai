@@ -51,7 +51,6 @@ def _init_s3_config():
 
 def _get_s3_config_from_session_state() -> dict:
     """Get S3 configuration from session state and environment variables."""
-    import os
     
     config = {}
     # Get basic config from session state
@@ -75,7 +74,6 @@ def _get_s3_config_from_session_state() -> dict:
 
 def _render_s3_config_ui():
     """Render S3 configuration UI in sidebar."""
-    import os
     
     st.subheader("☁️ S3 Storage")
     
@@ -640,7 +638,6 @@ def webui() -> None:
         with col2:
             save_local = st.checkbox('Save locally', value=False, help='Save file to local directory')
         with col3:
-            import os
             s3_enabled = st.session_state.get('s3_enabled', False)
             aws_bucket_name = os.getenv('AWS_BUCKET_NAME')
             if s3_enabled and aws_bucket_name:
@@ -658,7 +655,6 @@ def webui() -> None:
             )
             
             # S3 path preview
-            import os
             bucket_name = os.getenv('AWS_BUCKET_NAME', '')
             s3_preview_path = f"s3://{bucket_name}/{project_name}/{export_filename}{export_format}"
             st.info(f"📍 S3 Path: `{s3_preview_path}`")

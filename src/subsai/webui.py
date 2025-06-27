@@ -8,6 +8,7 @@ AI Transcription Tool Web User Interface (webui)
 import importlib
 import json
 import mimetypes
+import os
 import os.path
 import shutil
 import sys

@@ -89,8 +89,7 @@ class OoonaConverter:
             
             response = requests.post(
                 token_url,
-                json=data,
-                headers={'Content-Type': 'application/json'},
+                data=data,
                 timeout=30
             )
             

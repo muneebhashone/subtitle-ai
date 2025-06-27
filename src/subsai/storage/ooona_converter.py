@@ -26,32 +26,38 @@ class OoonaConverterError(Exception):
 class OoonaConverter:
     """OOONA API service for subtitle format conversion."""
     
-    def __init__(self, base_url: str, client_id: str, client_secret: str):
+    def __init__(self):
         """
-        Initialize OOONA converter service.
+        Initialize OOONA converter service using environment variables.
         
-        Args:
-            base_url: OOONA API base URL
-            client_id: API client identifier
-            client_secret: API client secret
+        Environment variables required:
+            OOONA_BASE_URL: OOONA API base URL
+            OOONA_CLIENT_ID: API client identifier
+            OOONA_CLIENT_SECRET: API client secret
         """
         if not REQUESTS_AVAILABLE:
             raise OoonaConverterError("requests is required for OOONA conversion. Install with: pip install requests")
         
-        self.base_url = base_url.rstrip('/')
-        self.client_id = client_id
-        self.client_secret = client_secret
+        # Get credentials from environment variables
+        self.base_url = os.getenv('OOONA_BASE_URL', '').rstrip('/')
+        self.client_id = os.getenv('OOONA_CLIENT_ID', '')
+        self.client_secret = os.getenv('OOONA_CLIENT_SECRET', '')
+        self.api_key = os.getenv('OOONA_API_KEY', '')
+        self.api_name = os.getenv('OOONA_API_NAME', '')
+        
+        # Validate required environment variables
+        required_vars = [self.base_url, self.client_id, self.client_secret, self.api_key, self.api_name]
+        if not all(required_vars):
+            missing = []
+            if not self.base_url: missing.append('OOONA_BASE_URL')
+            if not self.client_id: missing.append('OOONA_CLIENT_ID')
+            if not self.client_secret: missing.append('OOONA_CLIENT_SECRET')
+            if not self.api_key: missing.append('OOONA_API_KEY')
+            if not self.api_name: missing.append('OOONA_API_NAME')
+            raise OoonaConverterError(f"Missing required environment variables: {', '.join(missing)}")
+        
         self.access_token = None
         self.token_expires_at = None
-        
-        # Common format template IDs (these would need to be configured or retrieved)
-        self.format_templates = {
-            'srt': None,  # Will be retrieved from API or configured
-            'vtt': None,
-            'ooona': None,
-            'ass': None,
-            'ttml': None
-        }
     
     def authenticate(self) -> Dict[str, Any]:
         """
@@ -72,16 +78,19 @@ class OoonaConverter:
             # Get new token
             token_url = f"{self.base_url}/token"
             
+            # Use JSON payload as per API documentation
             data = {
-                'grant_type': 'client_credentials',
+                'grant_type': 'secret',
                 'client_id': self.client_id,
-                'client_secret': self.client_secret
+                'client_secret': self.client_secret,
+                'secret': self.api_key,
+                'name': self.api_name
             }
             
             response = requests.post(
                 token_url,
-                data=data,
-                headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                json=data,
+                headers={'Content-Type': 'application/json'},
                 timeout=30
             )
             
@@ -129,81 +138,16 @@ class OoonaConverter:
             datetime.now() < self.token_expires_at
         )
     
-    def get_format_templates(self) -> Dict[str, Any]:
-        """
-        Get available format templates from OOONA API.
-        
-        Returns:
-            Dict containing available formats and their template IDs
-        """
-        try:
-            # Ensure we're authenticated
-            auth_result = self.authenticate()
-            if not auth_result['success']:
-                return auth_result
-            
-            formats_url = f"{self.base_url}/external/formats"
-            headers = {
-                'Authorization': f'Bearer {self.access_token}',
-                'Content-Type': 'application/json'
-            }
-            
-            response = requests.get(formats_url, headers=headers, timeout=30)
-            
-            if response.status_code == 200:
-                formats_data = response.json()
-                
-                # Extract format information
-                formats_info = {}
-                for format_item in formats_data:
-                    key = format_item.get('key', '').lower()
-                    name = format_item.get('name', '')
-                    extensions = format_item.get('extensions', [])
-                    
-                    formats_info[key] = {
-                        'name': name,
-                        'extensions': extensions,
-                        'key': format_item.get('key')
-                    }
-                
-                logger.info(f"Retrieved {len(formats_info)} format templates")
-                return {
-                    'success': True,
-                    'message': 'Format templates retrieved successfully',
-                    'formats': formats_info
-                }
-            else:
-                error_msg = f"Failed to get format templates: {response.status_code} - {response.text}"
-                logger.error(error_msg)
-                return {
-                    'success': False,
-                    'message': error_msg
-                }
-                
-        except Exception as e:
-            error_msg = f"Error retrieving format templates: {str(e)}"
-            logger.error(error_msg)
-            return {
-                'success': False,
-                'message': error_msg
-            }
     
-    def convert_subtitle(self, subtitle_content: str, input_format: str, 
-                        output_format: str = 'ooona', 
-                        input_config_id: Optional[str] = None,
-                        output_config_id: Optional[str] = None) -> Dict[str, Any]:
+    def convert_subtitle(self, subtitle_content: str) -> Dict[str, Any]:
         """
-        Convert subtitle content from one format to another using OOONA API.
+        Convert SRT subtitle content to OOONA format using OOONA API.
         
         Args:
-            subtitle_content: The subtitle content to convert
-            input_format: Input format (e.g., 'srt', 'vtt')
-            output_format: Output format (default: 'ooona')
-            input_config_id: Optional input template ID
-            output_config_id: Optional output template ID
+            subtitle_content: The SRT subtitle content to convert
             
         Returns:
-            Dict containing conversion result and converted content
+            Dict containing conversion result and converted content (JSON response)
         """
         try:
             # Ensure we're authenticated
@@ -211,41 +155,14 @@ class OoonaConverter:
             if not auth_result['success']:
                 return auth_result
             
-            # Get format templates if config IDs not provided
-            if not input_config_id or not output_config_id:
-                templates_result = self.get_format_templates()
-                if not templates_result['success']:
-                    return templates_result
-                
-                formats = templates_result['formats']
-                
-                # Map format names to config IDs
-                if not input_config_id:
-                    input_format_info = formats.get(input_format.lower())
-                    if not input_format_info:
-                        return {
-                            'success': False,
-                            'message': f'Input format "{input_format}" not supported'
-                        }
-                    input_config_id = input_format_info['key']
-                
-                if not output_config_id:
-                    output_format_info = formats.get(output_format.lower())
-                    if not output_format_info:
-                        return {
-                            'success': False,
-                            'message': f'Output format "{output_format}" not supported'
-                        }
-                    output_config_id = output_format_info['key']
-            
             # Create temporary file for input
-            with tempfile.NamedTemporaryFile(mode='w', suffix=f'.{input_format}', delete=False) as temp_file:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False) as temp_file:
                 temp_file.write(subtitle_content)
                 temp_file_path = temp_file.name
             
             try:
-                # Prepare conversion request
-                convert_url = f"{self.base_url}/external/convert/{input_config_id}/{output_config_id}"
+                # Use fixed conversion endpoint: srt -> ooona
+                convert_url = f"{self.base_url}/external/convert/srt/ooona"
                 headers = {
                     'Authorization': f'Bearer {self.access_token}'
                 }
@@ -262,15 +179,25 @@ class OoonaConverter:
                     )
                 
                 if response.status_code == 200:
-                    converted_content = response.text
-                    logger.info(f"Successfully converted subtitle from {input_format} to {output_format}")
-                    return {
-                        'success': True,
-                        'message': f'Conversion from {input_format} to {output_format} successful',
-                        'content': converted_content,
-                        'input_format': input_format,
-                        'output_format': output_format
-                    }
+                    # API returns JSON response, extract content for .ooona file
+                    try:
+                        json_response = response.json()
+                        logger.info("Successfully converted subtitle from SRT to OOONA format")
+                        return {
+                            'success': True,
+                            'message': 'Conversion from SRT to OOONA successful',
+                            'content': json.dumps(json_response, indent=2),  # Pretty print JSON for .ooona file
+                            'json_data': json_response  # Original JSON data
+                        }
+                    except json.JSONDecodeError:
+                        # Fallback to text response if not JSON
+                        converted_content = response.text
+                        logger.info("Successfully converted subtitle from SRT to OOONA format (text response)")
+                        return {
+                            'success': True,
+                            'message': 'Conversion from SRT to OOONA successful',
+                            'content': converted_content
+                        }
                 else:
                     error_msg = f"Conversion failed: {response.status_code} - {response.text}"
                     logger.error(error_msg)
@@ -296,7 +223,7 @@ class OoonaConverter:
     
     def validate_connection(self) -> Dict[str, Any]:
         """
-        Validate connection to OOONA API.
+        Validate connection to OOONA API by testing authentication.
         
         Returns:
             Dict containing validation result
@@ -304,18 +231,10 @@ class OoonaConverter:
         try:
             auth_result = self.authenticate()
             if auth_result['success']:
-                # Test format retrieval to validate full connection
-                formats_result = self.get_format_templates()
-                if formats_result['success']:
-                    return {
-                        'success': True,
-                        'message': 'OOONA API connection validated successfully'
-                    }
-                else:
-                    return {
-                        'success': False,
-                        'message': f'Authentication successful but API access failed: {formats_result["message"]}'
-                    }
+                return {
+                    'success': True,
+                    'message': 'OOONA API connection validated successfully'
+                }
             else:
                 return auth_result
                 
@@ -328,29 +247,19 @@ class OoonaConverter:
             }
 
 
-def create_ooona_converter(config: Dict[str, Any]) -> Optional[OoonaConverter]:
+def create_ooona_converter() -> Optional[OoonaConverter]:
     """
-    Factory function to create OOONA converter instance.
-    
-    Args:
-        config: Configuration dictionary with base_url, client_id, client_secret
+    Factory function to create OOONA converter instance using environment variables.
         
     Returns:
         OoonaConverter instance or None if creation failed
     """
     try:
-        required_fields = ['base_url', 'client_id', 'client_secret']
-        for field in required_fields:
-            if not config.get(field):
-                logger.error(f"Missing required OOONA config field: {field}")
-                return None
+        return OoonaConverter()
         
-        return OoonaConverter(
-            base_url=config['base_url'],
-            client_id=config['client_id'],
-            client_secret=config['client_secret']
-        )
-        
-    except Exception as e:
+    except OoonaConverterError as e:
         logger.error(f"Failed to create OOONA converter: {str(e)}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error creating OOONA converter: {str(e)}")
         return None

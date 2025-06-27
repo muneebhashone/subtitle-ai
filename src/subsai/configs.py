@@ -325,26 +325,6 @@ S3_CONFIG_SCHEMA = {
         'description': 'Enable S3 storage for subtitles',
         'default': False
     },
-    'bucket_name': {
-        'type': str,
-        'description': 'S3 bucket name for storing subtitles',
-        'default': ''
-    },
-    'region': {
-        'type': str,
-        'description': 'AWS region for S3 bucket',
-        'default': 'us-east-1'
-    },
-    'access_key': {
-        'type': str,
-        'description': 'AWS access key (optional if using IAM roles)',
-        'default': ''
-    },
-    'secret_key': {
-        'type': str,
-        'description': 'AWS secret key (optional if using IAM roles)', 
-        'default': ''
-    },
     'default_project': {
         'type': str,
         'description': 'Default project folder name',
@@ -355,10 +335,6 @@ S3_CONFIG_SCHEMA = {
 # Default S3 configuration
 DEFAULT_S3_CONFIG = {
     'enabled': False,
-    'bucket_name': '',
-    'region': 'us-east-1',
-    'access_key': '',
-    'secret_key': '',
     'default_project': 'default'
 }
 
@@ -368,40 +344,10 @@ OOONA_CONFIG_SCHEMA = {
         'type': bool,
         'description': 'Enable OOONA API for subtitle format conversion',
         'default': False
-    },
-    'base_url': {
-        'type': str,
-        'description': 'OOONA API base URL',
-        'default': ''
-    },
-    'client_id': {
-        'type': str,
-        'description': 'OOONA API client ID',
-        'default': ''
-    },
-    'client_secret': {
-        'type': str,
-        'description': 'OOONA API client secret',
-        'default': ''
-    },
-    'input_format_template': {
-        'type': str,
-        'description': 'Default input format template ID (optional)',
-        'default': ''
-    },
-    'ooona_format_template': {
-        'type': str,
-        'description': 'OOONA format template ID (optional)',
-        'default': ''
     }
 }
 
 # Default OOONA configuration
 DEFAULT_OOONA_CONFIG = {
-    'enabled': False,
-    'base_url': '',
-    'client_id': '',
-    'client_secret': '',
-    'input_format_template': '',
-    'ooona_format_template': ''
+    'enabled': False
 }

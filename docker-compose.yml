@@ -7,6 +7,18 @@ services:
       dockerfile: Dockerfile
     ports:
       - 8501:8501
+    environment:
+      # OOONA API Configuration
+      - OOONA_API_NAME=${OOONA_API_NAME:-jason@aionvoice.ai}
+      - OOONA_API_KEY=${OOONA_API_KEY}
+      - OOONA_CLIENT_SECRET=${OOONA_CLIENT_SECRET}
+      - OOONA_CLIENT_ID=${OOONA_CLIENT_ID:-OoonaOnlineToolkit}
+      - OOONA_BASE_URL=${OOONA_BASE_URL:-https://ooona.ooonatools.tv/}
+      # AWS S3 Configuration
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - AWS_BUCKET_NAME=${AWS_BUCKET_NAME}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
     deploy:
       resources:
         reservations:
@@ -18,3 +30,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    ports:
+      - 8502:8501
+    environment:
+      # OOONA API Configuration
+      - OOONA_API_NAME=${OOONA_API_NAME:-jason@aionvoice.ai}
+      - OOONA_API_KEY=${OOONA_API_KEY}
+      - OOONA_CLIENT_SECRET=${OOONA_CLIENT_SECRET}
+      - OOONA_CLIENT_ID=${OOONA_CLIENT_ID:-OoonaOnlineToolkit}
+      - OOONA_BASE_URL=${OOONA_BASE_URL:-https://ooona.ooonatools.tv/}
+      # AWS S3 Configuration
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - AWS_BUCKET_NAME=${AWS_BUCKET_NAME}
+      - AWS_REGION=${AWS_REGION:-us-east-1}

@@ -23,10 +23,9 @@ from streamlit_player import st_player
 from st_aggrid import AgGrid, GridUpdateMode, GridOptionsBuilder, DataReturnMode
 
 from subsai import SubsAI, Tools
-from subsai.configs import ADVANCED_TOOLS_CONFIGS, DEFAULT_S3_CONFIG, S3_CONFIG_SCHEMA, DEFAULT_OOONA_CONFIG, OOONA_CONFIG_SCHEMA
+from subsai.configs import ADVANCED_TOOLS_CONFIGS, DEFAULT_S3_CONFIG, S3_CONFIG_SCHEMA
 from subsai.utils import available_subs_formats
 from subsai.storage.s3_storage import create_s3_storage
-from subsai.storage.ooona_converter import create_ooona_converter
 from streamlit.web import cli as stcli
 from tempfile import NamedTemporaryFile
 
@@ -47,109 +46,67 @@ def _init_s3_config():
         st.session_state['s3_config'] = DEFAULT_S3_CONFIG.copy()
 
 
-def _init_ooona_config():
-    """Initialize OOONA configuration in session state."""
-    if 'ooona_config' not in st.session_state:
-        st.session_state['ooona_config'] = DEFAULT_OOONA_CONFIG.copy()
 
 
 def _get_s3_config_from_session_state() -> dict:
-    """Get S3 configuration from session state."""
+    """Get S3 configuration from session state and environment variables."""
+    import os
+    
     config = {}
+    # Get basic config from session state
     for config_name in S3_CONFIG_SCHEMA:
         key = f"s3_{config_name}"
         if key in st.session_state:
             config[config_name] = st.session_state[key]
         else:
             config[config_name] = S3_CONFIG_SCHEMA[config_name]['default']
+    
+    # Add environment variables
+    config['bucket_name'] = os.getenv('AWS_BUCKET_NAME', '')
+    config['region'] = os.getenv('AWS_REGION', 'us-east-1')
+    config['access_key'] = os.getenv('AWS_ACCESS_KEY')
+    config['secret_key'] = os.getenv('AWS_SECRET_KEY')
+    
     return config
 
 
-def _get_ooona_config_from_session_state() -> dict:
-    """Get OOONA configuration from session state."""
-    config = {}
-    for config_name in OOONA_CONFIG_SCHEMA:
-        key = f"ooona_{config_name}"
-        if key in st.session_state:
-            config[config_name] = st.session_state[key]
-        else:
-            config[config_name] = OOONA_CONFIG_SCHEMA[config_name]['default']
-    return config
 
 
 def _render_s3_config_ui():
     """Render S3 configuration UI in sidebar."""
+    import os
+    
     st.subheader("☁️ S3 Storage")
     
-    # Enable/disable S3
-    s3_enabled = st.checkbox(
-        "Enable S3 Storage", 
-        value=st.session_state.get('s3_enabled', False),
-        help="Save subtitles to Amazon S3 bucket",
-        key='s3_enabled'
-    )
+    # Check environment variables
+    aws_access_key = os.getenv('AWS_ACCESS_KEY')
+    aws_secret_key = os.getenv('AWS_SECRET_KEY')
+    aws_bucket_name = os.getenv('AWS_BUCKET_NAME')
+    aws_region = os.getenv('AWS_REGION', 'us-east-1')
     
-    if s3_enabled:
-        # S3 Configuration fields
-        bucket_name = st.text_input(
-            "S3 Bucket Name",
-            value=st.session_state.get('s3_bucket_name', ''),
-            help="Name of your S3 bucket",
-            key='s3_bucket_name'
-        )
+    # Show environment variable status
+    if aws_access_key and aws_secret_key and aws_bucket_name:
+        st.success("✅ AWS credentials configured via environment variables")
+        st.info(f"📍 Bucket: `{aws_bucket_name}` | Region: `{aws_region}`")
         
-        region_mode = st.radio(
-            "Region input mode",
-            options=['Select from list', 'Custom'],
-            index=0,
-            help="Choose from common regions or enter a custom region",
-            key='s3_region_mode'
-        )
-        
-        if region_mode == 'Select from list':
-            region = st.selectbox(
-                "AWS Region",
-                options=['us-east-1', 'us-west-1', 'us-west-2', 'eu-west-1', 'eu-central-1', 'ap-southeast-1'],
-                index=0,
-                help="AWS region where your bucket is located",
-                key='s3_region'
-            )
-        else:
-            region = st.text_input(
-                "Custom AWS Region",
-                value=st.session_state.get('s3_region_custom', 'us-east-1'),
-                help="Enter AWS region code (e.g., us-east-1, eu-west-2, ap-south-1)",
-                key='s3_region_custom'
-            )
-        
-        # Credentials section
-        st.write("**AWS Credentials** (optional if using IAM roles)")
-        access_key = st.text_input(
-            "Access Key",
-            value=st.session_state.get('s3_access_key', ''),
-            type="password",
-            help="AWS Access Key ID",
-            key='s3_access_key'
-        )
-        
-        secret_key = st.text_input(
-            "Secret Key", 
-            value=st.session_state.get('s3_secret_key', ''),
-            type="password",
-            help="AWS Secret Access Key",
-            key='s3_secret_key'
+        # Enable/disable S3
+        s3_enabled = st.checkbox(
+            "Enable S3 Storage", 
+            value=st.session_state.get('s3_enabled', False),
+            help="Save subtitles to Amazon S3 bucket",
+            key='s3_enabled'
         )
         
         # Test connection button
-        if bucket_name:
+        if s3_enabled:
             if st.button("🔍 Test S3 Connection"):
                 with st.spinner("Testing S3 connection..."):
                     s3_config = {
                         'enabled': True,
-                        'bucket_name': bucket_name,
-                        'region': region,
-                        'access_key': access_key if access_key else None,
-                        'secret_key': secret_key if secret_key else None
+                        'bucket_name': aws_bucket_name,
+                        'region': aws_region,
+                        'access_key': aws_access_key,
+                        'secret_key': aws_secret_key
                     }
                     
                     s3_storage = create_s3_storage(s3_config)
@@ -161,97 +118,20 @@ def _render_s3_config_ui():
                             st.error(f"❌ {result['message']}")
                     else:
                         st.error("❌ Failed to create S3 storage client")
-        else:
-            st.info("💡 Enter bucket name to test connection")
+    else:
+        st.warning("⚠️ AWS credentials not configured")
+        st.info("💡 Configure the following environment variables:")
+        st.code("""
+AWS_ACCESS_KEY=your_access_key
+AWS_SECRET_KEY=your_secret_key
+AWS_BUCKET_NAME=your_bucket_name
+AWS_REGION=your_region
+        """)
+        s3_enabled = False
     
     return s3_enabled
 
 
-def _render_ooona_config_ui():
-    """Render OOONA API configuration UI in sidebar."""
-    st.subheader("🔄 OOONA API")
-    
-    # Enable/disable OOONA
-    ooona_enabled = st.checkbox(
-        "Enable OOONA Format", 
-        value=st.session_state.get('ooona_enabled', False),
-        help="Enable OOONA API for .ooona format conversion",
-        key='ooona_enabled'
-    )
-    
-    if ooona_enabled:
-        # OOONA API Configuration fields
-        base_url = st.text_input(
-            "API Base URL",
-            value=st.session_state.get('ooona_base_url', ''),
-            help="OOONA API base URL",
-            placeholder="https://api.ooona.com",
-            key='ooona_base_url'
-        )
-        
-        client_id = st.text_input(
-            "Client ID",
-            value=st.session_state.get('ooona_client_id', ''),
-            help="OOONA API client ID",
-            key='ooona_client_id'
-        )
-        
-        client_secret = st.text_input(
-            "Client Secret", 
-            value=st.session_state.get('ooona_client_secret', ''),
-            type="password",
-            help="OOONA API client secret",
-            key='ooona_client_secret'
-        )
-        
-        # Advanced settings
-        st.write("**Advanced Settings (Optional)**")
-        input_format_template = st.text_input(
-            "Input Format Template ID",
-            value=st.session_state.get('ooona_input_format_template', ''),
-            help="Template ID for input format (leave empty for auto-detection)",
-            key='ooona_input_format_template'
-        )
-        
-        ooona_format_template = st.text_input(
-            "OOONA Format Template ID", 
-            value=st.session_state.get('ooona_ooona_format_template', ''),
-            help="Template ID for OOONA format (leave empty for auto-detection)",
-            key='ooona_ooona_format_template'
-        )
-        
-        # Test connection button
-        if base_url and client_id and client_secret:
-            if st.button("🔍 Test OOONA Connection"):
-                with st.spinner("Testing OOONA API connection..."):
-                    ooona_config = {
-                        'base_url': base_url,
-                        'client_id': client_id,
-                        'client_secret': client_secret
-                    }
-                    
-                    ooona_converter = create_ooona_converter(ooona_config)
-                    if ooona_converter:
-                        result = ooona_converter.validate_connection()
-                        if result['success']:
-                            st.success(f"✅ {result['message']}")
-                            
-                            # Show available formats
-                            formats_result = ooona_converter.get_format_templates()
-                            if formats_result['success']:
-                                formats = formats_result['formats']
-                                if 'ooona' in formats:
-                                    st.info(f"🎯 OOONA format available: {formats['ooona']['name']}")
-                                else:
-                                    st.warning("⚠️ OOONA format not found in available formats")
-                        else:
-                            st.error(f"❌ {result['message']}")
-                    else:
-                        st.error("❌ Failed to create OOONA converter client")
-        else:
-            st.info("💡 Enter API credentials to test connection")
-    
-    return ooona_enabled
 
 
 def _get_key(model_name: str, config_name: str) -> str:
@@ -529,8 +409,19 @@ def webui() -> None:
 
         # OOONA Configuration Panel
         with st.sidebar.expander('OOONA API', expanded=False):
-            _init_ooona_config()
-            ooona_enabled = _render_ooona_config_ui()
+            ooona_enabled = st.checkbox(
+                "Enable OOONA Format", 
+                value=st.session_state.get('ooona_enabled', False),
+                help="Enable OOONA API for .ooona format conversion (requires environment variables)",
+                key='ooona_enabled'
+            )
+            if ooona_enabled:
+                st.info("💡 OOONA API credentials should be set as environment variables:\n"
+                       "- OOONA_BASE_URL\n"
+                       "- OOONA_CLIENT_ID\n"
+                       "- OOONA_CLIENT_SECRET\n"
+                       "- OOONA_API_KEY\n"
+                       "- OOONA_API_NAME")
 
         transcribe_button = st.button('Transcribe', type='primary')
         transcribe_loading_placeholder = st.empty()
@@ -748,8 +639,10 @@ def webui() -> None:
         with col2:
             save_local = st.checkbox('Save locally', value=False, help='Save file to local directory')
         with col3:
+            import os
             s3_enabled = st.session_state.get('s3_enabled', False)
-            if s3_enabled and st.session_state.get('s3_bucket_name', ''):
+            aws_bucket_name = os.getenv('AWS_BUCKET_NAME')
+            if s3_enabled and aws_bucket_name:
                 save_s3 = st.checkbox('Save to S3', value=False, help='Upload file to S3 bucket')
             else:
                 save_s3 = False
@@ -764,7 +657,8 @@ def webui() -> None:
             )
             
             # S3 path preview
-            bucket_name = st.session_state.get('s3_bucket_name', '')
+            import os
+            bucket_name = os.getenv('AWS_BUCKET_NAME', '')
             s3_preview_path = f"s3://{bucket_name}/{project_name}/{export_filename}{export_format}"
             st.info(f"📍 S3 Path: `{s3_preview_path}`")
         else:
@@ -784,38 +678,34 @@ def webui() -> None:
                 # Handle OOONA format conversion
                 if export_format == '.ooona':
                     if not ooona_enabled:
-                        st.error("OOONA API is not enabled. Please configure OOONA API in the sidebar.")
+                        st.error("OOONA API is not enabled. Please enable it in the sidebar.")
                         return
                     
-                    # Get OOONA configuration
-                    ooona_config = _get_ooona_config_from_session_state()
-                    
-                    # Validate OOONA configuration
-                    required_fields = ['base_url', 'client_id', 'client_secret']
-                    missing_fields = [field for field in required_fields if not ooona_config.get(field)]
-                    if missing_fields:
-                        st.error(f"Missing OOONA configuration: {', '.join(missing_fields)}. Please configure in the sidebar.")
+                    # Import here to avoid errors when OOONA is not used
+                    try:
+                        from subsai.storage.ooona_converter import create_ooona_converter
+                    except ImportError:
+                        st.error("OOONA converter not available. Please ensure all dependencies are installed.")
                         return
                     
-                    # Create OOONA converter
-                    ooona_converter = create_ooona_converter(ooona_config)
+                    # Create OOONA converter (uses environment variables)
+                    ooona_converter = create_ooona_converter()
                     if not ooona_converter:
-                        st.error("Failed to create OOONA converter. Please check your configuration.")
+                        st.error("Failed to create OOONA converter. Please check environment variables:\n"
+                                "- OOONA_BASE_URL\n"
+                                "- OOONA_CLIENT_ID\n"
+                                "- OOONA_CLIENT_SECRET\n"
+                                "- OOONA_API_KEY\n"
+                                "- OOONA_API_NAME")
                         return
                     
                     # Convert to OOONA format using API
                     with st.spinner("Converting to OOONA format using API..."):
-                        # First generate SRT content (most compatible input format)
+                        # Generate SRT content as input
                         input_content = subs.to_string(format_='srt')
                         
-                        # Convert using OOONA API
-                        conversion_result = ooona_converter.convert_subtitle(
-                            subtitle_content=input_content,
-                            input_format='srt',
-                            output_format='ooona',
-                            input_config_id=ooona_config.get('input_format_template'),
-                            output_config_id=ooona_config.get('ooona_format_template')
-                        )
+                        # Convert using simplified OOONA API
+                        conversion_result = ooona_converter.convert_subtitle(input_content)
                         
                         if conversion_result['success']:
                             subtitle_content = conversion_result['content']

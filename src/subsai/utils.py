@@ -36,15 +36,12 @@ def get_available_devices() -> list:
 def available_translation_models() -> list:
     """
     Returns available translation models
-    from (dl-translate)[https://github.com/xhluca/dl-translate]
+    Features DeepSeek v3 as the primary translation model with fallback options
 
     :return: list of available models
     """
     models = [
-        "facebook/m2m100_418M",
-        "facebook/m2m100_1.2B",
-        "facebook/mbart-large-50-many-to-many-mmt",
-        "facebook/nllb-200-distilled-600M"
+        "deepseek-ai/DeepSeek-V3",
     ]
     return models
 

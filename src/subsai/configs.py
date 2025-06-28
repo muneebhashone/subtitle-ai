@@ -25,96 +25,20 @@ AVAILABLE_MODELS = {
                        'diverse audio and is also a multi-task model that can perform multilingual speech recognition '
                        'as well as speech translation and language identification.',
         'url': 'https://github.com/openai/whisper',
-        'config_schema': WhisperModel.config_schema,
-    },
-    'linto-ai/whisper-timestamped': {
-        'class': WhisperTimeStamped,
-        'description': 'Multilingual Automatic Speech Recognition with word-level timestamps and confidence.',
-        'url': 'https://github.com/linto-ai/whisper-timestamped',
-        'config_schema': WhisperTimeStamped.config_schema,
-    },
-    'ggerganov/whisper.cpp': {
-        'class': WhisperCppModel,
-        'description': 'High-performance inference of OpenAI\'s Whisper automatic speech recognition (ASR) model\n'
-                       '* Plain C/C++ implementation without dependencies\n'
-                       '* Runs on the CPU\n',
-        'url': 'https://github.com/ggerganov/whisper.cpp\nhttps://github.com/abdeladim-s/pywhispercpp',
-        'config_schema': WhisperCppModel.config_schema,
-    },
-    'guillaumekln/faster-whisper': {
-        'class': FasterWhisperModel,
-        'description': '**faster-whisper** is a reimplementation of OpenAI\'s Whisper model using '
-                       '[CTranslate2](https://github.com/OpenNMT/CTranslate2/), which is a fast inference engine for '
-                       'Transformer models.\n'
-                       'This implementation is up to 4 times faster than [openai/whisper]( '
-                       'https://github.com/openai/whisper) for the same accuracy while using less memory. The '
-                       'efficiency can be further improved with 8-bit quantization on both CPU and GPU.',
-        'url': 'https://github.com/guillaumekln/faster-whisper',
-        'config_schema': FasterWhisperModel.config_schema,
-    },
-    'm-bain/whisperX': {
-        'class': WhisperXModel,
-        'description': """**whisperX** is a fast automatic speech recognition (70x realtime with large-v2) with word-level timestamps and speaker diarization.""",
-        'url': 'https://github.com/m-bain/whisperX',
-        'config_schema': WhisperXModel.config_schema,
-    },
-    'jianfch/stable-ts': {
-        'class': StableTsModel,
-        'description': '**Stabilizing Timestamps for Whisper** This library modifies [Whisper](https://github.com/openai/whisper) to produce more reliable timestamps and extends its functionality.',
-        'url': 'https://github.com/jianfch/stable-ts',
-        'config_schema': StableTsModel.config_schema,
-    },
-    'API/openai/whisper': {
-        'class': WhisperAPIModel,
-        'description': 'API for the OpenAI large-v2 Whisper model, requires an API key.',
-        'url': 'https://platform.openai.com/docs/guides/speech-to-text',
-        'config_schema': WhisperAPIModel.config_schema,
-    },
-    'HuggingFace': {
-        'class': HuggingFaceModel,
-        'description': 'Hugging Face implementation of Whisper. '
-                       'Any speech recognition pretrained model from the Hugging Face hub can be used as well',
-        'url': 'https://huggingface.co/tasks/automatic-speech-recognition',
-        'config_schema': HuggingFaceModel.config_schema,
-    },
-    'ivrit-ai/whisper-large-v2-tuned': {
-        'class': HuggingFaceModel,
-        'description': 'Hebrew fine-tuned Whisper Large v2 model by ivrit-ai. '
-                       'Optimized for Hebrew speech recognition with significantly improved accuracy for Hebrew audio. '
-                       'Fine-tuned using crowd-sourced Hebrew labeling.',
-        'url': 'https://huggingface.co/ivrit-ai/whisper-large-v2-tuned',
-        'config_schema': HuggingFaceModel.config_schema,
-    },
-    'ivrit-ai/whisper-large-v3': {
-        'class': HuggingFaceModel,
-        'description': 'Hebrew fine-tuned Whisper Large v3 model by ivrit-ai. '
-                       'Latest version with improved Hebrew ASR performance. '
-                       'Language detection capability degraded - intended for mostly Hebrew audio transcription.',
-        'url': 'https://huggingface.co/ivrit-ai/whisper-large-v3',
-        'config_schema': HuggingFaceModel.config_schema,
-    },
-    'Shiry/whisper-large-v2-he': {
-        'class': HuggingFaceModel,
-        'description': 'Hebrew Whisper Large v2 model fine-tuned on Google Fleurs Hebrew dataset. '
-                       'Good performance for Hebrew speech recognition tasks.',
-        'url': 'https://huggingface.co/Shiry/whisper-large-v2-he',
-        'config_schema': HuggingFaceModel.config_schema,
-    },
-    'imvladikon/wav2vec2-large-xlsr-53-hebrew': {
-        'class': HuggingFaceModel,
-        'description': 'Hebrew Wav2Vec2 model based on XLSR-53 architecture. '
-                       'Alternative to Whisper for Hebrew speech recognition, fine-tuned on Hebrew YouTube samples. '
-                       'Requires 16kHz audio input.',
-        'url': 'https://huggingface.co/imvladikon/wav2vec2-large-xlsr-53-hebrew',
-        'config_schema': HuggingFaceModel.config_schema,
-    },
-    'sivan22/faster-whisper-ivrit-ai-whisper-large-v2-tuned': {
-        'class': FasterWhisperModel,
-        'description': 'Hebrew fine-tuned Faster-Whisper model optimized for speed and Hebrew accuracy. '
-                       'Based on ivrit-ai whisper-large-v2 with CTranslate2 optimization for 4x faster inference. '
-                       'Ideal for production Hebrew speech recognition with lower memory usage.',
-        'url': 'https://huggingface.co/sivan22/faster-whisper-ivrit-ai-whisper-large-v2-tuned',
-        'config_schema': FasterWhisperModel.config_schema,
+        'config_schema': {
+            'source_language': {
+                'type': list,
+                'description': 'Source language of the audio (auto-detect if not specified)',
+                'options': ['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                'default': 'auto'
+            },
+            'target_language': {
+                'type': list,
+                'description': 'Target language for transcription/translation',
+                'options': ['transcribe', 'en'],
+                'default': 'transcribe'
+            }
+        },
     },
 }
 
@@ -334,7 +258,7 @@ S3_CONFIG_SCHEMA = {
 
 # Default S3 configuration
 DEFAULT_S3_CONFIG = {
-    'enabled': False,
+    'enabled': True,
     'default_project': 'default'
 }
 
@@ -343,11 +267,11 @@ OOONA_CONFIG_SCHEMA = {
     'enabled': {
         'type': bool,
         'description': 'Enable OOONA API for subtitle format conversion',
-        'default': False
+        'default': True
     }
 }
 
 # Default OOONA configuration
 DEFAULT_OOONA_CONFIG = {
-    'enabled': False
+    'enabled': True
 }

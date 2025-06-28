@@ -27,8 +27,10 @@ from subsai import SubsAI, Tools
 from subsai.configs import ADVANCED_TOOLS_CONFIGS, DEFAULT_S3_CONFIG, S3_CONFIG_SCHEMA
 from subsai.utils import available_subs_formats
 from subsai.storage.s3_storage import create_s3_storage
+from subsai.batch_processor import BatchProcessor, JobStatus, JobConfig
 from streamlit.web import cli as stcli
 from tempfile import NamedTemporaryFile
+import time
 
 __author__ = "absadiki"
 __contact__ = ""
@@ -91,7 +93,7 @@ def _render_s3_config_ui():
         # Enable/disable S3
         s3_enabled = st.checkbox(
             "Enable S3 Storage", 
-            value=st.session_state.get('s3_enabled', False),
+            value=st.session_state.get('s3_enabled', True),
             help="Save subtitles to Amazon S3 bucket",
             key='s3_enabled'
         )
@@ -168,6 +170,280 @@ def _config_ui(config_name: str, key: str, config: dict):
     else:
         print(f'Warning: {config_name} does not have a supported UI')
         pass
+
+def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI):
+    """
+    Render UI for batch processing of multiple files.
+    """
+    st.title("🔄 Batch Processing")
+    st.info("📁 Upload multiple media files and configure each one independently. Files larger than 10GB are supported!")
+
+    # Progress display first if processing
+    jobs = batch_processor.get_all_jobs()
+    if jobs:
+        render_batch_progress_dashboard(batch_processor)
+    
+    # File upload section
+    with st.expander("📂 Upload and Configure Files", expanded=not batch_processor.is_processing()):
+        uploaded_files = st.file_uploader(
+            "Choose media files", 
+            accept_multiple_files=True, 
+            type=["mp4", "avi", "mkv", "mov", "flv", "webm", "wav", "mp3", "m4a", "flac", "aac", "ogg"],
+            help="Supports large files up to 10GB. Multiple formats supported."
+        )
+
+        if uploaded_files:
+            st.success(f"📋 Uploaded {len(uploaded_files)} file(s)")
+            
+            # Bulk configuration options
+            st.write("**Bulk Configuration (applies to all files)**")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                bulk_source_language = st.selectbox(
+                    "Default source language",
+                    options=['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                    index=0
+                )
+            
+            with col2:
+                bulk_target_languages = st.multiselect(
+                    "Default target languages",
+                    options=['transcribe', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                    default=['transcribe']
+                )
+            
+            with col3:
+                bulk_formats = st.multiselect(
+                    "Default output formats",
+                    options=['srt', 'vtt', 'ass', 'sub'],
+                    default=['srt']
+                )
+            
+            use_bulk_config = st.checkbox("Use bulk configuration for all files", value=True)
+            
+            st.write("**Individual File Configuration**")
+            
+            # Store temp files and configs
+            if 'temp_files' not in st.session_state:
+                st.session_state.temp_files = []
+            
+            # Clear old temp files
+            st.session_state.temp_files = []
+            
+            # Configuration per file
+            for i, uploaded_file in enumerate(uploaded_files):
+                file_id = f"file-{i}-{uploaded_file.name}"
+                
+                with st.expander(f"📄 {uploaded_file.name} ({uploaded_file.size / (1024*1024):.1f} MB)", expanded=not use_bulk_config):
+                    # Save file temporarily
+                    temp_dir = tempfile.TemporaryDirectory()
+                    temp_file_path = os.path.join(temp_dir.name, uploaded_file.name)
+                    with open(temp_file_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                    
+                    # Store temp file info
+                    st.session_state.temp_files.append({
+                        'name': uploaded_file.name,
+                        'path': temp_file_path,
+                        'size': uploaded_file.size,
+                        'temp_dir': temp_dir
+                    })
+                    
+                    if use_bulk_config:
+                        source_language = bulk_source_language
+                        target_languages = bulk_target_languages
+                        formats = bulk_formats
+                        st.info(f"Using bulk configuration: {source_language} → {target_languages} → {formats}")
+                    else:
+                        # Individual configuration
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            source_language = st.selectbox(
+                                "Source language",
+                                options=['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                                index=0, key=f"source-lang-{file_id}"
+                            )
+                        
+                        with col2:
+                            target_languages = st.multiselect(
+                                "Target languages",
+                                options=['transcribe', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                                default=bulk_target_languages, key=f"target-lang-{file_id}"
+                            )
+                        
+                        with col3:
+                            formats = st.multiselect(
+                                "Output formats",
+                                options=['srt', 'vtt', 'ass', 'sub'],
+                                default=bulk_formats, key=f"format-{file_id}"
+                            )
+            
+            # Action buttons
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if st.button("🚀 Start Batch Processing", type="primary", disabled=batch_processor.is_processing()):
+                    if not any([bulk_target_languages if use_bulk_config else True]):
+                        st.error("Please select at least one target language")
+                    elif not any([bulk_formats if use_bulk_config else True]):
+                        st.error("Please select at least one output format")
+                    else:
+                        # Add jobs to processor
+                        for i, file_info in enumerate(st.session_state.temp_files):
+                            if use_bulk_config:
+                                job_target_languages = bulk_target_languages
+                                job_formats = bulk_formats
+                                job_source_language = bulk_source_language
+                            else:
+                                file_id = f"file-{i}-{file_info['name']}"
+                                job_source_language = st.session_state.get(f"source-lang-{file_id}", 'auto')
+                                job_target_languages = st.session_state.get(f"target-lang-{file_id}", ['transcribe'])
+                                job_formats = st.session_state.get(f"format-{file_id}", ['srt'])
+                            
+                            batch_processor.add_job(
+                                file_path=file_info['path'],
+                                file_name=file_info['name'],
+                                file_size=file_info['size'],
+                                source_language=job_source_language,
+                                target_languages=job_target_languages,
+                                output_formats=job_formats
+                            )
+                        
+                        batch_processor.start_processing()
+                        st.success(f"🚀 Started processing {len(st.session_state.temp_files)} files!")
+                        st.rerun()
+            
+            with col2:
+                if st.button("⏸️ Pause Processing", disabled=not batch_processor.is_processing()):
+                    batch_processor.pause_processing()
+                    st.info("Processing paused. Current job will complete.")
+                    time.sleep(1)
+                    st.rerun()
+            
+            with col3:
+                if st.button("🗑️ Clear Completed", disabled=batch_processor.is_processing()):
+                    batch_processor.clear_completed()
+                    st.success("Cleared completed jobs")
+                    st.rerun()
+
+
+def render_batch_progress_dashboard(batch_processor: BatchProcessor):
+    """
+    Render the batch processing progress dashboard with live updates.
+    """
+    overall_progress = batch_processor.get_progress()
+    jobs = batch_processor.get_all_jobs()
+    
+    if not jobs:
+        return
+    
+    # Auto-refresh if processing
+    if batch_processor.is_processing():
+        time.sleep(2)  # Wait 2 seconds before refresh
+        st.rerun()
+    
+    st.write("---")
+    st.subheader("📊 Batch Processing Dashboard")
+    
+    # Overall progress
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Overall Progress", f"{overall_progress['overall_progress']:.1%}")
+        st.progress(overall_progress['overall_progress'])
+    
+    with col2:
+        st.metric("Completed", f"{overall_progress['completed_jobs']}/{overall_progress['total_jobs']}")
+    
+    with col3:
+        st.metric("Processing", overall_progress['processing_jobs'], delta=None)
+    
+    with col4:
+        st.metric("Failed", overall_progress['failed_jobs'], delta=None if overall_progress['failed_jobs'] == 0 else "⚠️")
+    
+    # Current job info
+    current_job_id = batch_processor.get_current_job_id()
+    if current_job_id:
+        current_job = batch_processor.get_job_details(current_job_id)
+        if current_job:
+            st.info(f"🔄 Currently processing: **{current_job.file_name}** - {current_job.current_task}")
+    
+    # Job details
+    st.write("**Job Details:**")
+    
+    for job in jobs:
+        # Status icon mapping
+        status_icons = {
+            JobStatus.PENDING: "⏳",
+            JobStatus.PROCESSING: "🔄",
+            JobStatus.COMPLETED: "✅",
+            JobStatus.FAILED: "❌",
+            JobStatus.CANCELLED: "🚫",
+            JobStatus.PAUSED: "⏸️"
+        }
+        
+        icon = status_icons.get(job.status, "❓")
+        
+        with st.expander(f"{icon} {job.file_name} - {job.status.value.title()}", expanded=(job.status == JobStatus.PROCESSING)):
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.write(f"**Status:** {job.status.value.title()}")
+                st.write(f"**Progress:** {int(job.progress * 100)}%")
+                if job.progress > 0:
+                    st.progress(job.progress)
+                
+                if job.current_task:
+                    st.write(f"**Current Task:** {job.current_task}")
+                
+                if job.error_message:
+                    st.error(f"**Error:** {job.error_message}")
+                
+                # Show timing information
+                if job.started_at:
+                    start_time = time.strftime('%H:%M:%S', time.localtime(job.started_at))
+                    st.write(f"**Started:** {start_time}")
+                
+                if job.completed_at:
+                    end_time = time.strftime('%H:%M:%S', time.localtime(job.completed_at))
+                    duration = job.completed_at - (job.started_at or job.created_at)
+                    st.write(f"**Completed:** {end_time} (Duration: {duration:.1f}s)")
+            
+            with col2:
+                st.write(f"**File Size:** {job.file_size / (1024*1024):.1f} MB")
+                st.write(f"**Languages:** {job.source_language} → {', '.join(job.target_languages)}")
+                st.write(f"**Formats:** {', '.join(job.output_formats)}")
+                
+                # Cancel button for pending jobs
+                if job.status == JobStatus.PENDING:
+                    if st.button(f"Cancel", key=f"cancel-{job.file_id}"):
+                        if batch_processor.cancel_job(job.file_id):
+                            st.success("Job cancelled")
+                            st.rerun()
+            
+            # Results section
+            if job.results:
+                st.write("**📁 Generated Files:**")
+                for result in job.results:
+                    file_size_mb = result['size'] / (1024*1024) if result['size'] > 0 else 0
+                    st.success(f"📄 {result['filename']} ({result['format'].upper()}) - {file_size_mb:.1f} MB")
+                    
+                    # Download button for each result
+                    try:
+                        if os.path.exists(result['path']):
+                            with open(result['path'], 'r', encoding='utf-8') as f:
+                                content = f.read()
+                            st.download_button(
+                                f"📥 Download {result['filename']}",
+                                data=content,
+                                file_name=result['filename'],
+                                mime='text/plain',
+                                key=f"download-{job.file_id}-{result['filename']}"
+                            )
+                    except Exception as e:
+                        st.error(f"Error reading file: {e}")
 
 
 def _generate_config_ui(model_name, config_schema):
@@ -353,7 +629,20 @@ def webui() -> None:
     st.markdown(
         "### Subtitles generation tool powered by OpenAI's [Whisper](https://github.com/openai/whisper) and its "
         "variants.")
-    st.sidebar.title("Settings")
+    
+    # Initialize batch processor in session state
+    if 'batch_processor' not in st.session_state:
+        st.session_state.batch_processor = BatchProcessor()
+    
+    # Main tabs
+    tab1, tab2 = st.tabs(["Single File Processing", "Batch Processing"])
+    
+    with tab2:
+        render_batch_processing_ui(st.session_state.batch_processor, subs_ai)
+        st.stop()  # Stop processing here for batch tab
+    
+    with tab1:
+        st.sidebar.title("Settings")
 
     if 'transcribed_subs' in st.session_state:
         subs = st.session_state['transcribed_subs']
@@ -382,13 +671,14 @@ def webui() -> None:
 
             st.session_state['file_path'] = file_path
 
-        stt_model_name = st.selectbox("Select Model", SubsAI.available_models(), index=0,
+        stt_model_name = st.selectbox("Select Model", subs_ai.available_models(), index=0,
                                       help='Select an AI model to use for '
                                            'transcription')
 
-        with st.expander('Model Description', expanded=True):
-            info = SubsAI.model_info(stt_model_name)
+        with st.sidebar.expander('Model Description', expanded=True):
+            info = subs_ai.model_info(stt_model_name)
             st.info(info['description'] + '\n' + info['url'])
+            st.info('💡 **Simplified UX**: This tool now focuses on the essential options for a clean user experience. Source and target language settings are the only required configurations.')
 
         configs_mode = st.selectbox("Select Configs Mode", ['Manual', 'Load from local file'], index=0,
                                     help='Play manually with the model configs or load them from an exported json file.')
@@ -410,7 +700,7 @@ def webui() -> None:
         with st.sidebar.expander('OOONA API', expanded=False):
             ooona_enabled = st.checkbox(
                 "Enable OOONA Format", 
-                value=st.session_state.get('ooona_enabled', False),
+                value=st.session_state.get('ooona_enabled', True),
                 help="Enable OOONA API for .ooona format conversion (requires environment variables)",
                 key='ooona_enabled'
             )
@@ -482,21 +772,30 @@ def webui() -> None:
         advanced_tool = st.selectbox('Advanced tools', options=['', *list(ADVANCED_TOOLS_CONFIGS.keys())],
                                      help='some post processing tools')
         if advanced_tool == 'Translation':
-            configs = ADVANCED_TOOLS_CONFIGS[advanced_tool]
-            description = configs['description'] + '\n\nURL: ' + configs['url']
-            config_schema = configs['config_schema']
-            st.info(description)
-            _generate_config_ui(advanced_tool, config_schema)
-            translation_config = _get_config_from_session_state(advanced_tool, config_schema, notification_placeholder)
-            download_and_create_model = st.checkbox('Download and create the model', value=False,
-                                                    help='This will download the weights'
-                                                         ' and initializes the model')
-            if download_and_create_model:
-                translation_model = _create_translation_model(translation_config['model'])
-                source_language = st.selectbox('Source language',
-                                               options=tools.available_translation_languages(translation_model))
-                target_language = st.selectbox('Target language',
-                                               options=tools.available_translation_languages(translation_model))
+            st.info('Translate subtitles using DeepSeek v3 AI translation model')
+            
+            # Simple language selection
+            available_languages = [
+                'Auto-detect', 'English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese', 
+                'Russian', 'Japanese', 'Korean', 'Chinese', 'Arabic', 'Hindi', 'Turkish', 
+                'Polish', 'Dutch', 'Swedish', 'Danish', 'Norwegian', 'Finnish'
+            ]
+            
+            source_language = st.selectbox('Source language', options=available_languages, index=0)
+            target_language = st.selectbox('Target language', options=available_languages[1:], index=0)  # Exclude auto-detect for target
+            
+            # Auto initialize the model using DeepSeek v3
+            if 'translation_model' not in st.session_state:
+                if st.button('Initialize Translation Model'):
+                    with st.spinner("Initializing DeepSeek v3 translation model..."):
+                        try:
+                            translation_model = _create_translation_model('deepseek-ai/DeepSeek-V3')
+                            st.session_state['translation_model'] = translation_model
+                            st.success('✅ DeepSeek v3 model initialized successfully!')
+                        except Exception as e:
+                            st.error(f'Failed to initialize translation model: {e}')
+            
+            if 'translation_model' in st.session_state:
                 b1, b2 = st.columns([1, 1])
                 with b1:
                     submitted = st.button("Translate")
@@ -504,15 +803,17 @@ def webui() -> None:
                         if 'transcribed_subs' not in st.session_state:
                             st.error('No subtitles to translate')
                         else:
-                            with st.spinner("Processing (This may take a while) ..."):
-                                translated_subs = tools.translate(subs=subs,
-                                                                  source_language=source_language,
-                                                                  target_language=target_language,
-                                                                  model=translation_model,
-                                                                  translation_configs=translation_config)
-                                st.session_state['original_subs'] = st.session_state['transcribed_subs']
-                                st.session_state['transcribed_subs'] = translated_subs
-                            notification_placeholder.success('Success!', icon="✅")
+                            with st.spinner("Translating with DeepSeek v3..."):
+                                try:
+                                    translated_subs = tools.translate(subs=subs,
+                                                                      source_language=source_language,
+                                                                      target_language=target_language,
+                                                                      model=st.session_state['translation_model'])
+                                    st.session_state['original_subs'] = st.session_state['transcribed_subs']
+                                    st.session_state['transcribed_subs'] = translated_subs
+                                    notification_placeholder.success('Translation completed successfully!', icon="✅")
+                                except Exception as e:
+                                    st.error(f'Translation failed: {e}')
                 with b2:
                     reload_transcribed_subs = st.button('Reload Original subtitles')
                     if reload_transcribed_subs:
@@ -800,7 +1101,14 @@ def run():
     if runtime.exists():
         webui()
     else:
-        sys.argv = ["streamlit", "run", __file__, "--theme.base", "dark"] + sys.argv
+        # Configure Streamlit for large file uploads and batch processing
+        sys.argv = [
+            "streamlit", "run", __file__, 
+            "--theme.base", "dark",
+            "--server.maxUploadSize", "10000",  # 10GB upload limit
+            "--server.maxMessageSize", "10000",  # 10GB message size limit
+            "--browser.gatherUsageStats", "false"
+        ] + sys.argv
         sys.exit(stcli.main())
 
 

@@ -1,0 +1,18 @@
+[server]
+# Remove upload size limits for large media files
+maxUploadSize = 10000  # 10GB limit
+maxMessageSize = 10000  # 10GB message size limit
+enableXsrfProtection = false  # Disable for large file uploads
+enableCORS = false
+
+[browser]
+# Disable auto-opening browser for better server performance
+gatherUsageStats = false
+
+[theme]
+# Clean theme for professional appearance
+primaryColor = "#FF6B6B"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
+font = "sans serif"

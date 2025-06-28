@@ -21,9 +21,18 @@
 <!-- TOC -->
 
 # Features
+* **🔄 Batch Processing** (NEW!)
+  * Upload multiple files simultaneously (up to 10GB each)
+  * Configure each file independently with different languages and formats
+  * Real-time progress tracking with live dashboard
+  * Bulk configuration options for similar files
+  * Pause, resume, and cancel operations
+  * Support for 12+ media formats (MP4, AVI, MKV, WAV, MP3, etc.)
+  * Generate multiple target languages and formats per file
+  * [Full Documentation](./BATCH_PROCESSING.md)
 * Supported Models
-  * [x] [openai/whisper](https://github.com/openai/whisper)
-    * > Whisper is a general-purpose speech recognition model. It is trained on a large dataset of diverse audio and is also a multi-task model that can perform multilingual speech recognition as well as speech translation and language identification.
+  * [x] [openai/whisper](https://github.com/openai/whisper) (Simplified UX)
+    * > Whisper is a general-purpose speech recognition model with simplified configuration focusing on source and target language selection only.
   * [x] [linto-ai/whisper-timestamped](https://github.com/linto-ai/whisper-timestamped)
     * > Multilingual Automatic Speech Recognition with word-level timestamps and confidence
   * [x] [ggerganov/whisper.cpp](https://github.com/ggerganov/whisper.cpp) (using [ absadiki/pywhispercpp](https://github.com/absadiki/pywhispercpp))
@@ -158,10 +167,13 @@ options:
 
 Example of a simple usage
 ```shell
-subsai ./assets/test1.mp4 --model openai/whisper --model-configs '{"model_type": "small"}' --format srt
+subsai ./assets/test1.mp4 --model openai/whisper --source-language auto --target-language transcribe --format srt
 ```
-> Note: **For Windows CMD**, You will need to use the following :
-> `subsai ./assets/test1.mp4 --model openai/whisper --model-configs "{\"model_type\": \"small\"}" --format srt`
+
+Example with translation to English:
+```shell
+subsai ./assets/test1.mp4 --model openai/whisper --source-language auto --target-language en --format srt
+```
 
 You can also provide a simple text file for batch processing 
 _(Every line should contain the absolute path to a single media file)_
@@ -177,7 +189,10 @@ from subsai import SubsAI
 
 file = './assets/test1.mp4'
 subs_ai = SubsAI()
-model = subs_ai.create_model('openai/whisper', {'model_type': 'base'})
+model = subs_ai.create_model('openai/whisper', {
+    'source_language': 'auto',  # Auto-detect language
+    'target_language': 'transcribe'  # Keep original language
+})
 subs = subs_ai.transcribe(file, model)
 subs.save('test1.srt')
 ```

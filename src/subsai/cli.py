@@ -63,7 +63,8 @@ def _handle_configs(model_configs_arg: str):
 
 def run(media_file_arg: List[str],
         model_name,
-        model_configs,
+        source_language,
+        target_language,
         destination_folder,
         subs_format,
         translation_model,
@@ -73,9 +74,16 @@ def run(media_file_arg: List[str],
         output_suffix
         ):
     files = _handle_media_file(media_file_arg)
-    model_configs = _handle_configs(model_configs)
+    
+    # Build model config from simplified parameters
+    model_configs = {
+        'source_language': source_language,
+        'target_language': target_language
+    }
+    
     print(f"[-] Model name: {model_name}")
-    print(f"[-] Model configs: {'defaults' if model_configs == {} else model_configs}")
+    print(f"[-] Source language: {source_language}")
+    print(f"[-] Target language: {target_language}")
     print(f"---")
     print(f"[+] Initializing the model")
     model = subs_ai.create_model(model_name, model_configs)
@@ -124,10 +132,11 @@ def main():
     # Optional args
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     parser.add_argument('-m', '--model', default=SubsAI.available_models()[0],
-                        help=f'The transcription AI models. Available models: {SubsAI.available_models()}')
-    parser.add_argument('-mc', '--model-configs', default="{}",
-                        help="JSON configuration (path to a json file or a direct "
-                             "string)")
+                        help=f'The transcription AI model (only openai/whisper available for simplified UX): {SubsAI.available_models()}')
+    parser.add_argument('-sl', '--source-language', default='auto',
+                        help="Source language of the audio (auto-detect if not specified)")
+    parser.add_argument('-tl', '--target-language', default='transcribe',
+                        help="Target language for transcription ('transcribe' to keep original language, 'en' to translate to English)")
     parser.add_argument('-f', '--format', '--subtitles-format', default='srt',
                         help=f"Output subtitles format, available "
                              f"formats {available_subs_formats(include_extensions=False)}")
@@ -148,7 +157,8 @@ def main():
 
     run(media_file_arg=args.media_file,
         model_name=args.model,
-        model_configs=args.model_configs,
+        source_language=args.source_language,
+        target_language=args.target_language,
         destination_folder=args.destination_folder,
         subs_format=args.format,
         translation_model=args.translation_model,

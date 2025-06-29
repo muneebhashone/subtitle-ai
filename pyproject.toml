@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "subsai"
 version = "1.6.2"
 authors = [
-    {name = "absadiki"},
+    {name = "hashone"},
 ]
 description = "Subtitles generation tool powered by OpenAI's Whisper and its variants"
 readme = "README.md"
@@ -20,9 +20,6 @@ dynamic = ["dependencies"]
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
-[project.urls]
-"Homepage" = "https://github.com/absadiki/subsai"
-"Bug Tracker" = "https://github.com/absadiki/subsai/issues"
 
 
 [project.scripts]

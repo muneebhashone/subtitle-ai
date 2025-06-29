@@ -35,7 +35,7 @@
     * > Whisper is a general-purpose speech recognition model with simplified configuration focusing on source and target language selection only.
   * [x] [linto-ai/whisper-timestamped](https://github.com/linto-ai/whisper-timestamped)
     * > Multilingual Automatic Speech Recognition with word-level timestamps and confidence
-  * [x] [ggerganov/whisper.cpp](https://github.com/ggerganov/whisper.cpp) (using [ absadiki/pywhispercpp](https://github.com/absadiki/pywhispercpp))
+  * [x] [ggerganov/whisper.cpp](https://github.com/ggerganov/whisper.cpp)
     * > High-performance inference of OpenAI's Whisper automatic speech recognition (ASR) model
       > * Plain C/C++ implementation without dependencies
       > * Runs on the CPU
@@ -113,12 +113,11 @@ _Quoted from the official openai/whisper installation_
 * Once ffmpeg is installed, install `subsai`
 
 ```shell
-pip install git+https://github.com/absadiki/subsai
+pip install git+https://github.com/muneeb/subtitle-ai
 ```
 > [!NOTE]
 > * It is recommended to use Python 3.10 or 3.11. Versions 3.12 or later may have compatibility issues.
 > * If torch is unable to detect your GPU devices during your usage of subsai, assuming you have a supported GPU device, there is a chance that `pip` installed the CPU version of torch. You can install a torch version with CUDA support by following the [get started locally guide](https://pytorch.org/get-started/locally/) on pytorch.
-> For more information, see https://github.com/absadiki/subsai/issues/162.
 
 # Usage
 ### Web-UI
@@ -196,24 +195,12 @@ model = subs_ai.create_model('openai/whisper', {
 subs = subs_ai.transcribe(file, model)
 subs.save('test1.srt')
 ```
-For more advanced usage, read [the documentation](https://absadiki.github.io/subsai/).
 
 ### Examples 
-Simple examples can be found in the [examples](https://github.com/absadiki/subsai/tree/main/examples) folder
-
-* [VAD example](https://github.com/absadiki/subsai/blob/main/examples/subsai_vad.ipynb): process long audio files using [silero-vad](https://github.com/snakers4/silero-vad). <a target="_blank" href="https://colab.research.google.com/github/absadiki/subsai/blob/main/examples/subsai_vad.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-</a>
-
-* [Translation example](https://github.com/absadiki/subsai/blob/main/examples/subsai_translation.ipynb): translate an already existing subtitles file. <a target="_blank" href="https://colab.research.google.com/github/absadiki/subsai/blob/main/examples/subsai_translation.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-</a>
 
 # Docker
 * Make sure that you have `docker` installed.
 * Prebuilt image
-  1. ```docker pull absadiki/subsai:main```
-  2. ```docker run --gpus=all -p 8501:8501 -v /path/to/your/media_files/folder:/media_files absadiki/subsai:main```
 * Build the image locally 
   1. Clone and `cd` to the repository
   2. ```docker compose build```
@@ -223,7 +210,7 @@ Simple examples can be found in the [examples](https://github.com/absadiki/subsa
 
 # Notes
 * If you have an NVIDIA graphics card, you may need to install [cuda](https://docs.nvidia.com/cuda/#installation-guides) to use the GPU capabilities.
-* AMD GPUs compatible with Pytorch should be working as well. [#67](https://github.com/absadiki/subsai/issues/67) 
+* AMD GPUs compatible with Pytorch should be working as well. 
 * Transcription time is shown on the terminal, keep an eye on it while running the web UI. 
 * If you didn't like Dark mode web UI, you can switch to Light mode from `settings > Theme > Light`.
 

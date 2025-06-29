@@ -32,9 +32,9 @@ from streamlit.web import cli as stcli
 from tempfile import NamedTemporaryFile
 import time
 
-__author__ = "absadiki"
+__author__ = "hashone"
 __contact__ = ""
-__copyright__ = "Copyright 2023,"
+__copyright__ = "Copyright 2025,"
 __deprecated__ = False
 __license__ = "GPLv3"
 __version__ = importlib.metadata.version('subsai')

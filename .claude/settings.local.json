@@ -5,7 +5,8 @@
       "Bash(rg:*)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:postman.ooonatools.tv)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "WebFetch(domain:ollama.com)"
     ],
     "deny": []
   }

@@ -18,6 +18,7 @@ this program. If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import pathlib
+import re
 import tempfile
 from typing import Union, Dict
 
@@ -25,6 +26,7 @@ import ffmpeg
 import pysubs2
 from dl_translate import TranslationModel
 from pysubs2 import SSAFile
+import ollama
 from subsai.configs import AVAILABLE_MODELS
 from subsai.models.abstract_model import AbstractModel
 from ffsubsync.ffsubsync import run, make_parser
@@ -35,6 +37,115 @@ __contact__ = "https://github.com/abdeladim-s"
 __copyright__ = "Copyright 2023,"
 __license__ = "GPLv3"
 __github__ = "https://github.com/abdeladim/subsai"
+
+
+class OllamaTranslationModel:
+    """
+    Translation model using Ollama for local DeepSeek-R1 models.
+    """
+    
+    def __init__(self, model_name: str = "deepseek-r1:1.5b"):
+        """
+        Initialize the Ollama translation model.
+        
+        :param model_name: Name of the Ollama model to use
+        """
+        self.model_name = model_name
+        
+        # Configure Ollama client for Docker environment
+        import os
+        if os.getenv('DOCKER_ENV', 'false').lower() == 'true':
+            self.ollama_host = "http://host.docker.internal:11434"
+            # Configure Ollama client with custom host
+            import ollama
+            self.client = ollama.Client(host=self.ollama_host)
+        else:
+            self.ollama_host = "http://localhost:11434"
+            self.client = ollama.Client()
+        
+        # Test if Ollama is available and model exists
+        try:
+            self.client.show(model_name)
+        except Exception as e:
+            raise Exception(f"Ollama model '{model_name}' not found on {self.ollama_host}. Please run 'ollama pull {model_name}' first. Error: {e}")
+    
+    def translate(self, text: str, source: str, target: str, **kwargs) -> str:
+        """
+        Translate text using Ollama chat API.
+        
+        :param text: Text to translate
+        :param source: Source language
+        :param target: Target language
+        :param kwargs: Additional parameters (ignored for compatibility)
+        :return: Translated text
+        """
+        try:
+            response = self.client.chat(
+                model=self.model_name,
+                messages=[
+                    {
+                        'role': 'system',
+                        'content': f'You are a professional translator. Translate the following text from {source} to {target}. Return only the translation, no explanations or additional text.'
+                    },
+                    {
+                        'role': 'user',
+                        'content': text
+                    }
+                ]
+            )
+            raw_response = response['message']['content']
+            cleaned_response = self._clean_deepseek_response(raw_response)
+            return cleaned_response
+        except Exception as e:
+            raise Exception(f"Failed to translate with Ollama on {self.ollama_host}: {e}")
+    
+    def _clean_deepseek_response(self, text: str) -> str:
+        """
+        Clean DeepSeek-R1 response by removing think blocks and extra whitespace.
+        
+        :param text: Raw response from DeepSeek-R1
+        :return: Cleaned translation text
+        """
+        # Remove <think>...</think> blocks (including multiline)
+        cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Remove any remaining broken think tags
+        cleaned = re.sub(r'</?think[^>]*>', '', cleaned, flags=re.IGNORECASE)
+        
+        # Clean up whitespace
+        cleaned = cleaned.strip()
+        
+        # Remove multiple consecutive newlines
+        cleaned = re.sub(r'\n\s*\n', '\n', cleaned)
+        
+        # Remove extra spaces
+        cleaned = ' '.join(cleaned.split())
+        
+        # Handle empty responses
+        if not cleaned:
+            return text.strip()  # Fallback to original if cleaning results in empty string
+        
+        return cleaned
+    
+    def available_languages(self) -> list:
+        """
+        Return a list of supported languages for Ollama models.
+        DeepSeek-R1 supports many languages, returning a comprehensive list.
+        """
+        return [
+            'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 
+            'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi', 'el', 'cs', 'hu', 'ro', 'bg', 'hr',
+            'sk', 'sl', 'et', 'lv', 'lt', 'mt', 'cy', 'ga', 'eu', 'ca', 'gl', 'ast', 'oc',
+            'br', 'co', 'gd', 'gv', 'kw', 'lb', 'rm', 'fur', 'sc', 'vec', 'an', 'ext',
+            'mwl', 'mdf', 'myv', 'kv', 'koi', 'udm', 'chm', 'mrj', 'sah', 'tyv', 'bak',
+            'tat', 'krc', 'kbd', 'ady', 'abq', 'inh', 'ce', 'av', 'dar', 'lbe', 'lez',
+            'tab', 'rut', 'tkr', 'agx', 'udi', 'lzz', 'xmf', 'ka', 'hy', 'az', 'kk',
+            'ky', 'uz', 'tk', 'mn', 'bua', 'xal', 'cv', 'sah', 'evn', 'even', 'chk',
+            'ckt', 'kca', 'sel', 'nio', 'enf', 'yrk', 'nen', 'niv', 'ulc', 'orc', 'ude',
+            'th', 'lo', 'my', 'km', 'vi', 'ms', 'id', 'tl', 'ceb', 'hil', 'war', 'bcl',
+            'pam', 'ban', 'min', 'ace', 'bjn', 'mad', 'bug', 'gor', 'sas', 'nij', 'rej',
+            'lmp', 'rob', 'tmw', 'bbc', 'bug', 'mak', 'tet'
+        ]
 
 
 class SubsAI:
@@ -159,11 +270,11 @@ class Tools:
         return available_translation_models()
 
     @staticmethod
-    def available_translation_languages(model: Union[str, TranslationModel]) -> list:
+    def available_translation_languages(model: Union[str, TranslationModel, OllamaTranslationModel]) -> list:
         """
         Returns the languages supported by the translation model
 
-        :param model: the name of the model
+        :param model: the name of the model or model instance
         :return: list of available languages
         """
         if type(model) == str:
@@ -173,22 +284,27 @@ class Tools:
         return langs
 
     @staticmethod
-    def create_translation_model(model_name: str = "m2m100", model_family: str = None) -> TranslationModel:
+    def create_translation_model(model_name: str = "m2m100", model_family: str = None) -> Union[TranslationModel, OllamaTranslationModel]:
         """
         Creates and returns a translation model instance.
 
         :param model_name: name of the model. To get available models use :func:`available_translation_models`
         :param model_family: Either "mbart50" or "m2m100". By default, See `dl-translate` docs
-        :return: A translation model instance
+        :return: A translation model instance (either dl_translate or Ollama)
         """
-        mt = TranslationModel(model_or_path=model_name, model_family=model_family)
-        return mt
+        # Check if this is a DeepSeek model that should use Ollama
+        if model_name.startswith("deepseek") or model_name.startswith("ollama:"):
+            return OllamaTranslationModel(model_name)
+        else:
+            # Use dl_translate for traditional models
+            mt = TranslationModel(model_or_path=model_name, model_family=model_family)
+            return mt
 
     @staticmethod
     def translate(subs: SSAFile,
                   source_language: str,
                   target_language: str,
-                  model: Union[str, TranslationModel] = "m2m100",
+                  model: Union[str, TranslationModel, OllamaTranslationModel] = "m2m100",
                   model_family: str = None,
                   translation_configs: dict = {}) -> SSAFile:
         """

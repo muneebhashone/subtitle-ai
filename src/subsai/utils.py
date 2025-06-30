@@ -36,12 +36,12 @@ def get_available_devices() -> list:
 def available_translation_models() -> list:
     """
     Returns available translation models
-    Features DeepSeek v3 as the primary translation model with fallback options
+    Features DeepSeek-R1 as the primary translation model with fallback options
 
     :return: list of available models
     """
     models = [
-        "deepseek-ai/DeepSeek-V3",
+        "deepseek-r1:1.5b",
     ]
     return models
 

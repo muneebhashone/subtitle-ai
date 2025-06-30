@@ -184,149 +184,184 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI)
         render_batch_progress_dashboard(batch_processor)
     
     # File upload section
-    with st.expander("📂 Upload and Configure Files", expanded=not batch_processor.is_processing()):
-        uploaded_files = st.file_uploader(
-            "Choose media files", 
-            accept_multiple_files=True, 
-            type=["mp4", "avi", "mkv", "mov", "flv", "webm", "wav", "mp3", "m4a", "flac", "aac", "ogg"],
-            help="Supports large files up to 10GB. Multiple formats supported."
-        )
+    uploaded_files = st.file_uploader(
+        "Choose media files", 
+        accept_multiple_files=True, 
+        type=["mp4", "avi", "mkv", "mov", "flv", "webm", "wav", "mp3", "m4a", "flac", "aac", "ogg"],
+        help="Supports large files up to 10GB. Multiple formats supported."
+    )
 
-        if uploaded_files:
-            st.success(f"📋 Uploaded {len(uploaded_files)} file(s)")
-            
-            # Bulk configuration options
-            st.write("**Bulk Configuration (applies to all files)**")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                bulk_source_language = st.selectbox(
-                    "Default source language",
-                    options=['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
-                    index=0
+    if uploaded_files:
+        st.success(f"📋 Uploaded {len(uploaded_files)} file(s)")
+        
+        # Bulk configuration options
+        st.write("**Bulk Configuration (applies to all files)**")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            bulk_source_language = st.selectbox(
+                "Default source language",
+                options=['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                index=0
+            )
+        
+        with col2:
+            bulk_target_languages = st.multiselect(
+                "Default target languages",
+                options=['transcribe', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                default=['transcribe']
+            )
+        
+        with col3:
+            bulk_formats = st.multiselect(
+                "Default output formats",
+                options=['srt', 'vtt', 'ass', 'sub', 'ooona'],
+                default=['srt', 'ooona']
+            )
+        
+        use_bulk_config = st.checkbox("Use bulk configuration for all files", value=True)
+        
+        # S3 Upload Option for Batch Processing
+        st.write("**Storage Options**")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            batch_s3_upload = st.checkbox(
+                "Upload to S3 after processing", 
+                value=False,
+                help="Automatically upload generated files to S3 bucket (files will also be available for download)"
+            )
+        
+        with col2:
+            if batch_s3_upload:
+                batch_s3_project = st.text_input(
+                    "S3 Project folder",
+                    value="batch-processing",
+                    help="Folder name in S3 bucket for batch files"
                 )
-            
-            with col2:
-                bulk_target_languages = st.multiselect(
-                    "Default target languages",
-                    options=['transcribe', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
-                    default=['transcribe']
-                )
-            
-            with col3:
-                bulk_formats = st.multiselect(
-                    "Default output formats",
-                    options=['srt', 'vtt', 'ass', 'sub'],
-                    default=['srt']
-                )
-            
-            use_bulk_config = st.checkbox("Use bulk configuration for all files", value=True)
-            
-            st.write("**Individual File Configuration**")
-            
-            # Store temp files and configs
-            if 'temp_files' not in st.session_state:
-                st.session_state.temp_files = []
-            
-            # Clear old temp files
-            st.session_state.temp_files = []
-            
-            # Configuration per file
-            for i, uploaded_file in enumerate(uploaded_files):
-                file_id = f"file-{i}-{uploaded_file.name}"
                 
-                with st.expander(f"📄 {uploaded_file.name} ({uploaded_file.size / (1024*1024):.1f} MB)", expanded=not use_bulk_config):
-                    # Save file temporarily
-                    temp_dir = tempfile.TemporaryDirectory()
-                    temp_file_path = os.path.join(temp_dir.name, uploaded_file.name)
-                    with open(temp_file_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
+                # S3 path preview
+                s3_config = get_s3_config()
+                if s3_config.get('bucket_name'):
+                    st.info(f"📍 S3 Path: `{s3_config['bucket_name']}/{batch_s3_project}/`")
+        
+        st.write("**Individual File Configuration**")
+        
+        # Store temp files and configs
+        if 'temp_files' not in st.session_state:
+            st.session_state.temp_files = []
+        
+        # Clear old temp files
+        st.session_state.temp_files = []
+        
+        # Configuration per file
+        for i, uploaded_file in enumerate(uploaded_files):
+            file_id = f"file-{i}-{uploaded_file.name}"
+            
+            # Handle file size safely
+            file_size_mb = "Unknown"
+            if hasattr(uploaded_file, 'size') and uploaded_file.size is not None:
+                file_size_mb = f"{uploaded_file.size / (1024*1024):.1f} MB"
+            
+            with st.expander(f"📄 {uploaded_file.name} ({file_size_mb})", expanded=not use_bulk_config):
+                # Save file temporarily
+                temp_dir = tempfile.TemporaryDirectory()
+                temp_file_path = os.path.join(temp_dir.name, uploaded_file.name)
+                with open(temp_file_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                
+                # Store temp file info
+                st.session_state.temp_files.append({
+                    'name': uploaded_file.name,
+                    'path': temp_file_path,
+                    'size': uploaded_file.size,
+                    'temp_dir': temp_dir
+                })
+                
+                if use_bulk_config:
+                    source_language = bulk_source_language
+                    target_languages = bulk_target_languages
+                    formats = bulk_formats
+                    st.info(f"Using bulk configuration: {source_language} → {target_languages} → {formats}")
+                else:
+                    # Individual configuration
+                    col1, col2, col3 = st.columns(3)
                     
-                    # Store temp file info
-                    st.session_state.temp_files.append({
-                        'name': uploaded_file.name,
-                        'path': temp_file_path,
-                        'size': uploaded_file.size,
-                        'temp_dir': temp_dir
-                    })
+                    with col1:
+                        source_language = st.selectbox(
+                            "Source language",
+                            options=['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                            index=0, key=f"source-lang-{file_id}"
+                        )
                     
-                    if use_bulk_config:
-                        source_language = bulk_source_language
-                        target_languages = bulk_target_languages
-                        formats = bulk_formats
-                        st.info(f"Using bulk configuration: {source_language} → {target_languages} → {formats}")
-                    else:
-                        # Individual configuration
-                        col1, col2, col3 = st.columns(3)
+                    with col2:
+                        target_languages = st.multiselect(
+                            "Target languages",
+                            options=['transcribe', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                            default=bulk_target_languages, key=f"target-lang-{file_id}"
+                        )
+                    
+                    with col3:
+                        formats = st.multiselect(
+                            "Output formats",
+                            options=['srt', 'vtt', 'ass', 'sub', 'ooona'],
+                            default=bulk_formats, key=f"format-{file_id}"
+                        )
+        
+        # Action buttons
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("🚀 Start Batch Processing", type="primary", disabled=batch_processor.is_processing()):
+                if not any([bulk_target_languages if use_bulk_config else True]):
+                    st.error("Please select at least one target language")
+                elif not any([bulk_formats if use_bulk_config else True]):
+                    st.error("Please select at least one output format")
+                else:
+                    # Add jobs to processor
+                    for i, file_info in enumerate(st.session_state.temp_files):
+                        if use_bulk_config:
+                            job_target_languages = bulk_target_languages
+                            job_formats = bulk_formats
+                            job_source_language = bulk_source_language
+                        else:
+                            file_id = f"file-{i}-{file_info['name']}"
+                            job_source_language = st.session_state.get(f"source-lang-{file_id}", 'auto')
+                            job_target_languages = st.session_state.get(f"target-lang-{file_id}", ['transcribe'])
+                            job_formats = st.session_state.get(f"format-{file_id}", ['srt'])
                         
-                        with col1:
-                            source_language = st.selectbox(
-                                "Source language",
-                                options=['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
-                                index=0, key=f"source-lang-{file_id}"
-                            )
+                        # Prepare export options for S3
+                        export_options = {}
+                        if batch_s3_upload:
+                            export_options['s3_upload'] = True
+                            export_options['s3_project_folder'] = batch_s3_project
                         
-                        with col2:
-                            target_languages = st.multiselect(
-                                "Target languages",
-                                options=['transcribe', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
-                                default=bulk_target_languages, key=f"target-lang-{file_id}"
-                            )
-                        
-                        with col3:
-                            formats = st.multiselect(
-                                "Output formats",
-                                options=['srt', 'vtt', 'ass', 'sub'],
-                                default=bulk_formats, key=f"format-{file_id}"
-                            )
-            
-            # Action buttons
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                if st.button("🚀 Start Batch Processing", type="primary", disabled=batch_processor.is_processing()):
-                    if not any([bulk_target_languages if use_bulk_config else True]):
-                        st.error("Please select at least one target language")
-                    elif not any([bulk_formats if use_bulk_config else True]):
-                        st.error("Please select at least one output format")
-                    else:
-                        # Add jobs to processor
-                        for i, file_info in enumerate(st.session_state.temp_files):
-                            if use_bulk_config:
-                                job_target_languages = bulk_target_languages
-                                job_formats = bulk_formats
-                                job_source_language = bulk_source_language
-                            else:
-                                file_id = f"file-{i}-{file_info['name']}"
-                                job_source_language = st.session_state.get(f"source-lang-{file_id}", 'auto')
-                                job_target_languages = st.session_state.get(f"target-lang-{file_id}", ['transcribe'])
-                                job_formats = st.session_state.get(f"format-{file_id}", ['srt'])
-                            
-                            batch_processor.add_job(
-                                file_path=file_info['path'],
-                                file_name=file_info['name'],
-                                file_size=file_info['size'],
-                                source_language=job_source_language,
-                                target_languages=job_target_languages,
-                                output_formats=job_formats
-                            )
-                        
-                        batch_processor.start_processing()
-                        st.success(f"🚀 Started processing {len(st.session_state.temp_files)} files!")
-                        st.rerun()
-            
-            with col2:
-                if st.button("⏸️ Pause Processing", disabled=not batch_processor.is_processing()):
-                    batch_processor.pause_processing()
-                    st.info("Processing paused. Current job will complete.")
-                    time.sleep(1)
-                    st.rerun()
-            
-            with col3:
-                if st.button("🗑️ Clear Completed", disabled=batch_processor.is_processing()):
-                    batch_processor.clear_completed()
-                    st.success("Cleared completed jobs")
-                    st.rerun()
+                        batch_processor.add_job(
+                            file_path=file_info['path'],
+                            file_name=file_info['name'],
+                            file_size=file_info['size'],
+                            source_language=job_source_language,
+                            target_languages=job_target_languages,
+                            output_formats=job_formats,
+                            export_options=export_options
+                        )
+                    
+                    batch_processor.start_processing()
+                    st.success(f"🚀 Started processing {len(st.session_state.temp_files)} files!")
+                    st.experimental_rerun()
+        
+        with col2:
+            if st.button("⏸️ Pause Processing", disabled=not batch_processor.is_processing()):
+                batch_processor.pause_processing()
+                st.info("Processing paused. Current job will complete.")
+                time.sleep(1)
+                st.experimental_rerun()
+        
+        with col3:
+            if st.button("🗑️ Clear Completed", disabled=batch_processor.is_processing()):
+                batch_processor.clear_completed()
+                st.success("Cleared completed jobs")
+                st.experimental_rerun()
 
 
 def render_batch_progress_dashboard(batch_processor: BatchProcessor):
@@ -342,7 +377,7 @@ def render_batch_progress_dashboard(batch_processor: BatchProcessor):
     # Auto-refresh if processing
     if batch_processor.is_processing():
         time.sleep(2)  # Wait 2 seconds before refresh
-        st.rerun()
+        st.experimental_rerun()
     
     st.write("---")
     st.subheader("📊 Batch Processing Dashboard")
@@ -421,7 +456,7 @@ def render_batch_progress_dashboard(batch_processor: BatchProcessor):
                     if st.button(f"Cancel", key=f"cancel-{job.file_id}"):
                         if batch_processor.cancel_job(job.file_id):
                             st.success("Job cancelled")
-                            st.rerun()
+                            st.experimental_rerun()
             
             # Results section
             if job.results:
@@ -639,19 +674,21 @@ def webui() -> None:
     
     with tab2:
         render_batch_processing_ui(st.session_state.batch_processor, subs_ai)
-        st.stop()  # Stop processing here for batch tab
     
     with tab1:
-        st.sidebar.title("Settings")
+        st.title("📝 Single File Processing")
+        st.info("🎯 Upload or select a single media file for transcription and subtitle generation.")
+        
+        if 'transcribed_subs' in st.session_state:
+            subs = st.session_state['transcribed_subs']
+        else:
+            subs = None
 
-    if 'transcribed_subs' in st.session_state:
-        subs = st.session_state['transcribed_subs']
-    else:
-        subs = None
+        notification_placeholder = st.empty()
 
-    notification_placeholder = st.empty()
-
-    with st.sidebar:
+        with st.sidebar:
+            st.title("Settings")
+            
         with st.expander('Media file', expanded=True):
             file_mode = st.selectbox("Select file mode", ['Local path', 'Upload'], index=0,
                                      help='Use `Local Path` if you are on a local machine, or use `Upload` to '
@@ -772,26 +809,26 @@ def webui() -> None:
         advanced_tool = st.selectbox('Advanced tools', options=['', *list(ADVANCED_TOOLS_CONFIGS.keys())],
                                      help='some post processing tools')
         if advanced_tool == 'Translation':
-            st.info('Translate subtitles using DeepSeek v3 AI translation model')
+            st.info('Translate subtitles using DeepSeek-R1 1.5B AI translation model')
             
             # Simple language selection
             available_languages = [
                 'Auto-detect', 'English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese', 
-                'Russian', 'Japanese', 'Korean', 'Chinese', 'Arabic', 'Hindi', 'Turkish', 
+                'Russian', 'Japanese', 'Korean', 'Chinese', 'Arabic', 'Hebrew', 'Hindi', 'Turkish', 
                 'Polish', 'Dutch', 'Swedish', 'Danish', 'Norwegian', 'Finnish'
             ]
             
             source_language = st.selectbox('Source language', options=available_languages, index=0)
             target_language = st.selectbox('Target language', options=available_languages[1:], index=0)  # Exclude auto-detect for target
             
-            # Auto initialize the model using DeepSeek v3
+            # Auto initialize the model using DeepSeek-R1
             if 'translation_model' not in st.session_state:
                 if st.button('Initialize Translation Model'):
-                    with st.spinner("Initializing DeepSeek v3 translation model..."):
+                    with st.spinner("Initializing DeepSeek-R1 1.5B translation model..."):
                         try:
-                            translation_model = _create_translation_model('deepseek-ai/DeepSeek-V3')
+                            translation_model = _create_translation_model('deepseek-r1:1.5b')
                             st.session_state['translation_model'] = translation_model
-                            st.success('✅ DeepSeek v3 model initialized successfully!')
+                            st.success('✅ DeepSeek-R1 1.5B model initialized successfully!')
                         except Exception as e:
                             st.error(f'Failed to initialize translation model: {e}')
             
@@ -803,7 +840,7 @@ def webui() -> None:
                         if 'transcribed_subs' not in st.session_state:
                             st.error('No subtitles to translate')
                         else:
-                            with st.spinner("Translating with DeepSeek v3..."):
+                            with st.spinner("Translating with DeepSeek-R1..."):
                                 try:
                                     translated_subs = tools.translate(subs=subs,
                                                                       source_language=source_language,

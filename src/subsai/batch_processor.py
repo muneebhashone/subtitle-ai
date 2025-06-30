@@ -287,7 +287,7 @@ class BatchProcessor:
                         subs=base_subs,
                         source_language=job.source_language if job.source_language != 'auto' else 'auto',
                         target_language=target_language,
-                        model='deepseek-ai/DeepSeek-V3'
+                        model='deepseek-r1:1.5b'
                     )
                     lang_suffix = target_language
                 
@@ -349,8 +349,8 @@ class BatchProcessor:
         output_path = temp_dir / filename
         
         # Save the subtitle file
-        if format_ext == 'ooona' and export_options.get('ooona_convert', False):
-            # Handle OOONA format conversion (placeholder for now)
+        if format_ext == 'ooona':
+            # Handle OOONA format conversion
             try:
                 from subsai.storage.ooona_converter import create_ooona_converter
                 ooona_converter = create_ooona_converter()
@@ -377,6 +377,32 @@ class BatchProcessor:
             'path': str(output_path),
             'size': output_path.stat().st_size if output_path.exists() else 0
         }
+        
+        # Handle S3 upload if enabled
+        if export_options.get('s3_upload', False):
+            try:
+                from subsai.storage.s3_storage import create_s3_storage
+                s3_storage = create_s3_storage()
+                if s3_storage:
+                    project_folder = export_options.get('s3_project_folder', 'batch-processing')
+                    s3_result = s3_storage.upload_file(
+                        str(output_path),
+                        filename,
+                        project_folder
+                    )
+                    if s3_result['success']:
+                        result_info['s3_url'] = s3_result['s3_url']
+                        result_info['s3_upload'] = True
+                        self.logger.info(f"Uploaded {filename} to S3: {s3_result['s3_url']}")
+                    else:
+                        self.logger.warning(f"S3 upload failed for {filename}: {s3_result['message']}")
+                        result_info['s3_error'] = s3_result['message']
+                else:
+                    self.logger.warning("S3 storage not available")
+                    result_info['s3_error'] = "S3 storage not configured"
+            except Exception as e:
+                self.logger.error(f"S3 upload error for {filename}: {e}")
+                result_info['s3_error'] = str(e)
         
         job.results.append(result_info)
         

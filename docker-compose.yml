@@ -6,7 +6,9 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - 8501:8501
+      - "8501:8501"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env
     deploy:
@@ -21,6 +23,8 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - 8502:8501
+      - "8502:8501"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env

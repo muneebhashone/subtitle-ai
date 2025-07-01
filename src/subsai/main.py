@@ -57,7 +57,6 @@ class OllamaTranslationModel:
         if os.getenv('DOCKER_ENV', 'false').lower() == 'true':
             self.ollama_host = "http://host.docker.internal:11434"
             # Configure Ollama client with custom host
-            import ollama
             self.client = ollama.Client(host=self.ollama_host)
         else:
             self.ollama_host = "http://localhost:11434"

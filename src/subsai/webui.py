@@ -30,6 +30,7 @@ from subsai.storage.s3_storage import create_s3_storage
 from subsai.batch_processor import BatchProcessor, JobStatus, JobConfig
 from subsai.auth.decorators import AuthUtils, require_auth, require_admin
 from subsai.auth.pages import render_login_page, render_user_dashboard, render_admin_panel
+from subsai.analytics import AnalyticsService
 from streamlit.web import cli as stcli
 from tempfile import NamedTemporaryFile
 import time
@@ -43,6 +44,7 @@ __version__ = importlib.metadata.version('subsai')
 
 subs_ai = SubsAI()
 tools = Tools()
+analytics = AnalyticsService()
 
 
 def _init_s3_config():
@@ -178,9 +180,9 @@ def render_batch_processing_with_auth(user):
     """
     Render batch processing with user authentication
     """
-    # Initialize batch processor in session state
+    # Initialize batch processor in session state with user context
     if 'batch_processor' not in st.session_state:
-        st.session_state.batch_processor = BatchProcessor()
+        st.session_state.batch_processor = BatchProcessor(user_id=user.id if user else None)
     
     render_batch_processing_ui(st.session_state.batch_processor, subs_ai, user)
 
@@ -632,38 +634,6 @@ def _subs_df(subs):
     df = pd.DataFrame(sub_table, columns=['Start time', 'End time', 'Text'])
     return df
 
-
-footer = """
-<style>
-    #page-container {
-      position: relative;
-    }
-
-    footer{
-        visibility:hidden;
-    }
-
-    .footer {
-    position: relative;
-    left: 0;
-    top:230px;
-    bottom: 0;
-    width: 100%;
-    background-color: transparent;
-    color: #808080; /* theme's text color hex code at 50 percent brightness*/
-    text-align: left; /* you can replace 'left' with 'center' or 'right' if you want*/
-    }
-</style>
-
-<div id="page-container">
-    <div class="footer">
-        <p style='font-size: 0.875em;'>
-        Made with ❤</p>
-    </div>
-</div>
-"""
-
-
 def webui() -> None:
     """
     main web UI with authentication
@@ -843,15 +813,79 @@ def render_single_file_processing(user):
     transcribe_loading_placeholder = st.empty()
 
     if transcribe_button:
-        config_schema = SubsAI.config_schema(stt_model_name)
-        if configs_mode == 'Manual':
-            model_config = _get_config_from_session_state(stt_model_name, config_schema, notification_placeholder)
-        else:
-            with open(configs_path, 'r', encoding='utf-8') as f:
-                model_config = json.load(f)
-        subs = _transcribe(file_path, stt_model_name, model_config)
-        st.session_state['transcribed_subs'] = subs
-        transcribe_loading_placeholder.success('Done!', icon="✅")
+        start_time = time.time()
+        file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+        filename = os.path.basename(file_path)
+        
+        # Track transcription start
+        if analytics.is_enabled():
+            analytics.track_transcription_start(
+                user_id=user.id,
+                filename=filename,
+                model=stt_model_name,
+                file_size=file_size,
+                source_language='auto'  # Default for single file processing
+            )
+        
+        try:
+            config_schema = SubsAI.config_schema(stt_model_name)
+            if configs_mode == 'Manual':
+                model_config = _get_config_from_session_state(stt_model_name, config_schema, notification_placeholder)
+            else:
+                with open(configs_path, 'r', encoding='utf-8') as f:
+                    model_config = json.load(f)
+            
+            subs = _transcribe(file_path, stt_model_name, model_config)
+            st.session_state['transcribed_subs'] = subs
+            processing_time = time.time() - start_time
+            
+            # Track successful transcription
+            if analytics.is_enabled():
+                analytics.track_transcription_complete(
+                    user_id=user.id,
+                    filename=filename,
+                    model=stt_model_name,
+                    processing_time=processing_time,
+                    success=True
+                )
+                
+                # Record comprehensive file analytics
+                analytics.record_file_processing(
+                    user_id=user.id,
+                    filename=filename,
+                    file_size=file_size,
+                    model_used=stt_model_name,
+                    processing_time=processing_time,
+                    success=True,
+                    source_language='auto',
+                    output_formats=['srt']  # Default for single file processing
+                )
+            
+            transcribe_loading_placeholder.success('Done!', icon="✅")
+            
+        except Exception as e:
+            processing_time = time.time() - start_time
+            
+            # Track failed transcription
+            if analytics.is_enabled():
+                analytics.track_transcription_complete(
+                    user_id=user.id,
+                    filename=filename,
+                    model=stt_model_name,
+                    processing_time=processing_time,
+                    success=False,
+                    error_message=str(e)
+                )
+                
+                analytics.track_error(
+                    user_id=user.id,
+                    error_type='transcription_error',
+                    error_message=str(e),
+                    filename=filename
+                )
+            
+            transcribe_loading_placeholder.error(f'Transcription failed: {str(e)}', icon="❌")
+            raise
 
     with st.expander('Post Processing Tools', expanded=False):
         basic_tool = st.selectbox('Basic tools', options=['', 'Set time', 'Shift'],
@@ -1175,6 +1209,26 @@ def render_single_file_processing(user):
                         else:
                             st.error("Failed to create S3 storage client")
                 
+                # Track analytics for export operations
+                if analytics.is_enabled():
+                    # Track download
+                    if enable_download:
+                        analytics.track_download(
+                            user_id=user.id,
+                            filename=export_filename + export_format,
+                            format=export_format[1:],  # Remove dot
+                            file_size=len(subtitle_content.encode('utf-8'))
+                        )
+                    
+                    # Track S3 upload
+                    if save_s3 and s3_enabled:
+                        analytics.track_upload(
+                            user_id=user.id,
+                            destination='s3',
+                            filename=export_filename + export_format,
+                            project_folder=project_name
+                        )
+                
                 # Show results
                 if export_results or enable_download:
                     if export_results:
@@ -1219,10 +1273,6 @@ def render_single_file_processing(user):
         export_filename = st.text_input('Filename', value=f"{stt_model_name}_configs.json".replace('/', '-'))
         configs_dict = _get_config_from_session_state(stt_model_name, config_schema, notification_placeholder)
         st.download_button('Download', data=json.dumps(configs_dict), file_name=export_filename, mime='json')
-
-
-    st.markdown(footer, unsafe_allow_html=True)
-
 
 def run():
     if runtime.exists():

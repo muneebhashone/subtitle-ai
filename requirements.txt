@@ -20,3 +20,4 @@ pydub==0.25.1
 boto3==1.38.39
 ollama
 bcrypt==4.1.2
+plotly>=5.0.0

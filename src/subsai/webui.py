@@ -28,6 +28,8 @@ from subsai.configs import ADVANCED_TOOLS_CONFIGS, DEFAULT_S3_CONFIG, S3_CONFIG_
 from subsai.utils import available_subs_formats
 from subsai.storage.s3_storage import create_s3_storage
 from subsai.batch_processor import BatchProcessor, JobStatus, JobConfig
+from subsai.auth.decorators import AuthUtils, require_auth, require_admin
+from subsai.auth.pages import render_login_page, render_user_dashboard, render_admin_panel
 from streamlit.web import cli as stcli
 from tempfile import NamedTemporaryFile
 import time
@@ -171,12 +173,28 @@ def _config_ui(config_name: str, key: str, config: dict):
         print(f'Warning: {config_name} does not have a supported UI')
         pass
 
-def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI):
+@require_auth
+def render_batch_processing_with_auth(user):
+    """
+    Render batch processing with user authentication
+    """
+    # Initialize batch processor in session state
+    if 'batch_processor' not in st.session_state:
+        st.session_state.batch_processor = BatchProcessor()
+    
+    render_batch_processing_ui(st.session_state.batch_processor, subs_ai, user)
+
+
+def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI, user=None):
     """
     Render UI for batch processing of multiple files.
     """
     st.title("🔄 Batch Processing")
     st.info("📁 Upload multiple media files and configure each one independently. Files larger than 10GB are supported!")
+    
+    # Show user context if provided
+    if user:
+        st.info(f"👤 Processing files for user: **{user.username}**")
 
     # Progress display first if processing
     jobs = batch_processor.get_all_jobs()
@@ -648,79 +666,151 @@ footer = """
 
 def webui() -> None:
     """
-    main web UI
+    main web UI with authentication
     :return: None
     """
-    st.set_page_config(page_title='AI Transcription Tool',
-                       page_icon="🎞️",
-                       menu_items={
-                           'About': f"### AI Transcription Tool \nv{__version__} "
-                                    f"\n \nLicense: GPLv3"
-                       },
-                       layout="wide",
-                       initial_sidebar_state='auto')
-
-    st.markdown(f"# AI Transcription Tool 🎞️")
-    st.markdown(
-        "### Subtitles generation tool powered by OpenAI's [Whisper](https://github.com/openai/whisper) and its "
-        "variants.")
+    # Initialize authentication
+    auth = AuthUtils.init_auth()
     
-    # Initialize batch processor in session state
-    if 'batch_processor' not in st.session_state:
-        st.session_state.batch_processor = BatchProcessor()
+    # Check authentication status
+    if not auth.is_authenticated():
+        render_login_page()
+        return
     
-    # Main tabs
-    tab1, tab2 = st.tabs(["Single File Processing", "Batch Processing"])
+    # Get current user
+    user = auth.get_current_user()
+    if not user:
+        st.error("Authentication error. Please refresh the page.")
+        return
     
-    with tab2:
-        render_batch_processing_ui(st.session_state.batch_processor, subs_ai)
+    # Set page config
+    st.set_page_config(
+        page_title=f'SubsAI - {user.username}',
+        page_icon="🎞️",
+        menu_items={
+            'About': f"### AI Transcription Tool \nv{__version__} "
+                     f"\n \nLicense: GPLv3"
+        },
+        layout="wide",
+        initial_sidebar_state='auto'
+    )
     
-    with tab1:
-        st.title("📝 Single File Processing")
-        st.info("🎯 Upload or select a single media file for transcription and subtitle generation.")
+    # Navigation
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = "dashboard"
+    
+    # Sidebar navigation
+    with st.sidebar:
+        st.title("🎞️ SubsAI")
         
-        if 'transcribed_subs' in st.session_state:
-            subs = st.session_state['transcribed_subs']
+        # User info
+        AuthUtils.show_user_info(user, "_nav")
+        
+        # Navigation menu
+        st.subheader("📍 Navigation")
+        
+        pages = {
+            "dashboard": "👋 Dashboard",
+            "single_file": "📝 Single File",
+            "batch_processing": "🔄 Batch Processing"
+        }
+        
+        # Add admin page for admin users
+        if user.role == "admin":
+            pages["admin"] = "🔧 Admin Panel"
+        
+        for page_key, page_label in pages.items():
+            if st.button(page_label, key=f"nav_{page_key}", use_container_width=True):
+                st.session_state.current_page = page_key
+                st.experimental_rerun()
+    
+    # Render appropriate page
+    if st.session_state.current_page == "dashboard":
+        render_user_dashboard()
+    elif st.session_state.current_page == "admin" and user.role == "admin":
+        render_admin_panel()
+    elif st.session_state.current_page == "single_file":
+        render_single_file_processing(user)
+    elif st.session_state.current_page == "batch_processing":
+        render_batch_processing_with_auth(user)
+    else:
+        st.session_state.current_page = "dashboard"
+        st.experimental_rerun()
+
+
+@require_auth
+def render_single_file_processing(user):
+    """
+    Render single file processing page with user authentication
+    """
+    st.title("📝 Single File Processing")
+    st.info("🎯 Upload or select a single media file for transcription and subtitle generation.")
+    
+    if 'transcribed_subs' in st.session_state:
+        subs = st.session_state['transcribed_subs']
+    else:
+        subs = None
+
+    notification_placeholder = st.empty()
+    
+    # User-specific project selection
+    auth = AuthUtils.init_auth()
+    user_projects = auth.auth.db.get_user_projects(user.id)
+    
+    if user_projects:
+        st.subheader("📋 Select Project")
+        project_options = {"None": None}
+        for project in user_projects:
+            project_options[project.name] = project.id
+        
+        selected_project_name = st.selectbox(
+            "Choose a project for this transcription",
+            options=list(project_options.keys()),
+            help="Associate this transcription with one of your projects"
+        )
+        selected_project_id = project_options[selected_project_name]
+        st.session_state['selected_project_id'] = selected_project_id
+        
+        if selected_project_id:
+            project = auth.auth.db.get_project_by_id(selected_project_id, user.id)
+            if project:
+                st.info(f"📋 Working on project: **{project.name}**")
+    
+    with st.sidebar:
+        st.title("Settings")
+    
+    with st.expander('Media file', expanded=True):
+        file_mode = st.selectbox("Select file mode", ['Local path', 'Upload'], index=0,
+                                 help='Use `Local Path` if you are on a local machine, or use `Upload` to '
+                                      'upload your files if you are using a remote server')
+        if file_mode == 'Local path':
+            file_path = st.text_input('Media file path', help='Absolute path of the media file')
         else:
-            subs = None
-
-        notification_placeholder = st.empty()
-
-        with st.sidebar:
-            st.title("Settings")
-            
-        with st.expander('Media file', expanded=True):
-            file_mode = st.selectbox("Select file mode", ['Local path', 'Upload'], index=0,
-                                     help='Use `Local Path` if you are on a local machine, or use `Upload` to '
-                                          'upload your files if you are using a remote server')
-            if file_mode == 'Local path':
-                file_path = st.text_input('Media file path', help='Absolute path of the media file')
+            uploaded_file = st.file_uploader("Choose a media file")
+            if uploaded_file is not None:
+                temp_dir = tempfile.TemporaryDirectory()
+                tmp_dir_path = temp_dir.name
+                file_path = os.path.join(tmp_dir_path, uploaded_file.name)
+                file = open(file_path, "wb")
+                file.write(uploaded_file.getbuffer())
             else:
-                uploaded_file = st.file_uploader("Choose a media file")
-                if uploaded_file is not None:
-                    temp_dir = tempfile.TemporaryDirectory()
-                    tmp_dir_path = temp_dir.name
-                    file_path = os.path.join(tmp_dir_path, uploaded_file.name)
-                    file = open(file_path, "wb")
-                    file.write(uploaded_file.getbuffer())
-                else:
-                    file_path = ""
+                file_path = ""
 
-            st.session_state['file_path'] = file_path
+        st.session_state['file_path'] = file_path
 
-        stt_model_name = st.selectbox("Select Model", subs_ai.available_models(), index=0,
-                                      help='Select an AI model to use for '
-                                           'transcription')
+    stt_model_name = st.selectbox("Select Model", subs_ai.available_models(), index=0,
+                                  help='Select an AI model to use for '
+                                       'transcription')
 
-        with st.sidebar.expander('Model Description', expanded=True):
+    with st.sidebar.expander('Model Description', expanded=True):
             info = subs_ai.model_info(stt_model_name)
             st.info(info['description'] + '\n' + info['url'])
             st.info('💡 **Simplified UX**: This tool now focuses on the essential options for a clean user experience. Source and target language settings are the only required configurations.')
 
-        configs_mode = st.selectbox("Select Configs Mode", ['Manual', 'Load from local file'], index=0,
-                                    help='Play manually with the model configs or load them from an exported json file.')
+    configs_mode = st.selectbox("Select Configs Mode", ['Manual', 'Load from local file'], index=0,
+                                help='Play manually with the model configs or load them from an exported json file.')
 
-        with st.sidebar.expander('Model Configs', expanded=False):
+    with st.sidebar.expander('Model Configs', expanded=False):
             config_schema = SubsAI.config_schema(stt_model_name)
 
             if configs_mode == 'Manual':
@@ -728,13 +818,13 @@ def webui() -> None:
             else:
                 configs_path = st.text_input('Configs path', help='Absolute path of the configs file')
 
-        # S3 Configuration Panel
-        with st.sidebar.expander('S3 Storage', expanded=False):
+    # S3 Configuration Panel
+    with st.sidebar.expander('S3 Storage', expanded=False):
             _init_s3_config()
             s3_enabled = _render_s3_config_ui()
 
-        # OOONA Configuration Panel
-        with st.sidebar.expander('OOONA API', expanded=False):
+    # OOONA Configuration Panel
+    with st.sidebar.expander('OOONA API', expanded=False):
             ooona_enabled = st.checkbox(
                 "Enable OOONA Format", 
                 value=st.session_state.get('ooona_enabled', True),
@@ -749,8 +839,8 @@ def webui() -> None:
                        "- OOONA_API_KEY\n"
                        "- OOONA_API_NAME")
 
-        transcribe_button = st.button('Transcribe', type='primary')
-        transcribe_loading_placeholder = st.empty()
+    transcribe_button = st.button('Transcribe', type='primary')
+    transcribe_loading_placeholder = st.empty()
 
     if transcribe_button:
         config_schema = SubsAI.config_schema(stt_model_name)

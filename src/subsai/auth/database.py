@@ -24,11 +24,15 @@ class Database:
             db_path: Path to SQLite database file. If None, uses default location.
         """
         if db_path is None:
-            # Default to a data directory in the project root
-            project_root = Path(__file__).parent.parent.parent.parent
-            data_dir = project_root / "data"
-            data_dir.mkdir(exist_ok=True)
-            db_path = str(data_dir / "subsai_auth.db")
+            # Check for environment variable first
+            db_path = os.getenv('SUBSAI_DB_PATH')
+            
+            if db_path is None:
+                # Default to a data directory in the project root
+                project_root = Path(__file__).parent.parent.parent.parent
+                data_dir = project_root / "data"
+                data_dir.mkdir(exist_ok=True)
+                db_path = str(data_dir / "subsai_auth.db")
         
         self.db_path = db_path
         self.logger = logging.getLogger(__name__)

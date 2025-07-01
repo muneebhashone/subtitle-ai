@@ -288,7 +288,7 @@ def render_admin_panel():
     AuthUtils.show_user_info(user, "_admin")
     
     # Admin tabs
-    tab1, tab2, tab3 = st.tabs(["👥 User Management", "📊 System Stats", "⚙️ System Settings"])
+    tab1, tab2, tab3, tab4 = st.tabs(["👥 User Management", "📊 System Stats", "📈 Analytics", "⚙️ System Settings"])
     
     with tab1:
         render_user_management()
@@ -297,6 +297,9 @@ def render_admin_panel():
         render_system_stats()
     
     with tab3:
+        render_analytics_panel()
+    
+    with tab4:
         render_system_settings()
 
 
@@ -477,3 +480,58 @@ def render_system_settings():
             st.write(f"**bcrypt Version:** {bcrypt.__version__}")
         except Exception:
             st.write("**bcrypt Version:** Unable to determine")
+
+
+def render_analytics_panel():
+    """Render analytics panel for administrators"""
+    try:
+        from ..analytics.dashboard import render_analytics_dashboard
+        render_analytics_dashboard()
+    except ImportError as e:
+        st.error("Analytics module not available")
+        st.info("Missing dependencies. The analytics module requires additional packages.")
+        
+        # Show what's missing
+        missing_deps = []
+        try:
+            import plotly
+        except ImportError:
+            missing_deps.append("plotly")
+        
+        if missing_deps:
+            st.warning(f"⚠️ Optional dependencies missing: {', '.join(missing_deps)}")
+            st.info("Charts will use basic Streamlit visualizations instead of Plotly")
+        
+        # Show the actual import error for debugging
+        with st.expander("🔍 Debug Information"):
+            st.code(f"Import Error: {str(e)}")
+        
+        # Try to show basic analytics without dashboard
+        try:
+            from ..analytics.basic_dashboard import render_basic_analytics_dashboard
+            st.info("🔄 Switching to basic analytics mode...")
+            render_basic_analytics_dashboard()
+            return
+        except Exception as basic_error:
+            st.error(f"❌ Basic analytics also failed: {str(basic_error)}")
+            
+            # Last resort - just check service availability
+            try:
+                from ..analytics import AnalyticsService
+                analytics = AnalyticsService()
+                if analytics.is_enabled():
+                    st.success("✅ Analytics service is available")
+                    st.info("📊 Basic analytics functionality is working. The issue is only with the dashboard UI.")
+                else:
+                    st.warning("⚠️ Analytics is disabled")
+            except Exception as analytics_error:
+                st.error(f"❌ Analytics service error: {str(analytics_error)}")
+            
+    except Exception as e:
+        st.error(f"Error loading analytics dashboard: {str(e)}")
+        st.info("The analytics system may need to be initialized or there might be a database issue")
+        
+        # Show detailed error for debugging
+        with st.expander("🔍 Debug Information"):
+            import traceback
+            st.code(traceback.format_exc())

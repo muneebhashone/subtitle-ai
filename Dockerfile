@@ -6,7 +6,6 @@ WORKDIR /subsai
 COPY requirements.txt .
 
 ENV DEBIAN_FRONTEND noninteractive
-ENV DOCKER_ENV=true
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y git && \

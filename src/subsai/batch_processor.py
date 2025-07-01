@@ -15,6 +15,7 @@ from pathlib import Path
 import logging
 
 from subsai import SubsAI, Tools
+from .analytics import AnalyticsService
 
 
 class JobStatus(Enum):
@@ -131,7 +132,7 @@ class ProgressTracker:
 class BatchProcessor:
     """Main batch processing orchestrator"""
     
-    def __init__(self, progress_callback: Optional[Callable] = None):
+    def __init__(self, progress_callback: Optional[Callable] = None, user_id: Optional[int] = None):
         self.progress_tracker = ProgressTracker()
         self.progress_callback = progress_callback
         self.subs_ai = SubsAI()
@@ -140,9 +141,13 @@ class BatchProcessor:
         self._should_stop = False
         self._processing_thread = None
         self._current_job_id = None
+        self.user_id = user_id
         
         # Setup logging
         self.logger = logging.getLogger(__name__)
+        
+        # Initialize analytics service
+        self.analytics = AnalyticsService()
         
     def add_job(self, file_path: str, file_name: str, file_size: int, **config_options) -> str:
         """Add a new job to the batch processing queue"""
@@ -241,6 +246,18 @@ class BatchProcessor:
         """Process a single job with all its target languages and formats"""
         self.logger.info(f"Starting processing of job {job.file_id}: {job.file_name}")
         
+        # Track transcription start
+        if self.user_id and self.analytics.is_enabled():
+            self.analytics.track_transcription_start(
+                user_id=self.user_id,
+                filename=job.file_name,
+                model='openai/whisper',
+                file_size=job.file_size,
+                source_language=job.source_language,
+                target_languages=job.target_languages,
+                output_formats=job.output_formats
+            )
+        
         # Update job status to processing
         self.progress_tracker.update_job_progress(
             job.file_id,
@@ -248,6 +265,8 @@ class BatchProcessor:
             JobStatus.PROCESSING,
             "Initializing transcription model..."
         )
+        
+        start_time = time.time()
         
         try:
             # Create model
@@ -317,6 +336,42 @@ class BatchProcessor:
                     
                     completed_tasks += 1
             
+            # Calculate processing time and track completion
+            processing_time = time.time() - start_time
+            
+            # Track transcription completion
+            if self.user_id and self.analytics.is_enabled():
+                self.analytics.track_transcription_complete(
+                    user_id=self.user_id,
+                    filename=job.file_name,
+                    model='openai/whisper',
+                    processing_time=processing_time,
+                    success=True
+                )
+                
+                # Record comprehensive file analytics
+                self.analytics.record_file_processing(
+                    user_id=self.user_id,
+                    filename=job.file_name,
+                    file_size=job.file_size,
+                    model_used='openai/whisper',
+                    processing_time=processing_time,
+                    success=True,
+                    source_language=job.source_language,
+                    target_languages=[lang for lang in job.target_languages if lang != 'transcribe'],
+                    output_formats=job.output_formats
+                )
+                
+                # Track translations
+                for target_lang in job.target_languages:
+                    if target_lang != 'transcribe':
+                        self.analytics.track_translation(
+                            user_id=self.user_id,
+                            filename=job.file_name,
+                            source_lang=job.source_language,
+                            target_lang=target_lang
+                        )
+            
             # Mark job as completed
             self.progress_tracker.update_job_progress(
                 job.file_id,
@@ -329,6 +384,40 @@ class BatchProcessor:
             
         except Exception as e:
             self.logger.error(f"Error processing job {job.file_id}: {e}")
+            
+            # Track error
+            if self.user_id and self.analytics.is_enabled():
+                processing_time = time.time() - start_time
+                self.analytics.track_transcription_complete(
+                    user_id=self.user_id,
+                    filename=job.file_name,
+                    model='openai/whisper',
+                    processing_time=processing_time,
+                    success=False,
+                    error_message=str(e)
+                )
+                
+                self.analytics.track_error(
+                    user_id=self.user_id,
+                    error_type='transcription_error',
+                    error_message=str(e),
+                    filename=job.file_name
+                )
+                
+                # Record file analytics with error
+                self.analytics.record_file_processing(
+                    user_id=self.user_id,
+                    filename=job.file_name,
+                    file_size=job.file_size,
+                    model_used='openai/whisper',
+                    processing_time=processing_time,
+                    success=False,
+                    source_language=job.source_language,
+                    target_languages=[lang for lang in job.target_languages if lang != 'transcribe'],
+                    output_formats=job.output_formats,
+                    error_message=str(e)
+                )
+            
             self.progress_tracker.update_job_progress(
                 job.file_id,
                 job.progress,
@@ -394,6 +483,16 @@ class BatchProcessor:
                         result_info['s3_url'] = s3_result['s3_url']
                         result_info['s3_upload'] = True
                         self.logger.info(f"Uploaded {filename} to S3: {s3_result['s3_url']}")
+                        
+                        # Track S3 upload
+                        if self.user_id and self.analytics.is_enabled():
+                            self.analytics.track_upload(
+                                user_id=self.user_id,
+                                destination='s3',
+                                filename=filename,
+                                project_folder=project_folder,
+                                s3_url=s3_result['s3_url']
+                            )
                     else:
                         self.logger.warning(f"S3 upload failed for {filename}: {s3_result['message']}")
                         result_info['s3_error'] = s3_result['message']
@@ -405,6 +504,15 @@ class BatchProcessor:
                 result_info['s3_error'] = str(e)
         
         job.results.append(result_info)
+        
+        # Track download/export
+        if self.user_id and self.analytics.is_enabled():
+            self.analytics.track_download(
+                user_id=self.user_id,
+                filename=filename,
+                format=format_ext,
+                file_size=result_info['size']
+            )
         
         self.logger.info(f"Exported {filename} for job {job.file_id}")
     

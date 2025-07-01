@@ -11,6 +11,8 @@ services:
       - "host.docker.internal:host-gateway"
     env_file:
       - .env
+    volumes:
+      - ./data:/subsai/data
     deploy:
       resources:
         reservations:
@@ -28,3 +30,5 @@ services:
       - "host.docker.internal:host-gateway"
     env_file:
       - .env
+    volumes:
+      - ./data:/subsai/data

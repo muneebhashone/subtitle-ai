@@ -472,6 +472,7 @@ class BatchProcessor:
             try:
                 from subsai.storage.s3_storage import create_s3_storage
                 s3_config = export_options.get('s3_config', {})
+                s3_config['enabled'] = True
                 self.logger.debug(f"S3 config received: enabled={s3_config.get('enabled')}, bucket={s3_config.get('bucket_name')}")
                 s3_storage = create_s3_storage(s3_config)
                 if s3_storage:

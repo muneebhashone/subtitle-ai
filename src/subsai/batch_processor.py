@@ -471,7 +471,8 @@ class BatchProcessor:
         if export_options.get('s3_upload', False):
             try:
                 from subsai.storage.s3_storage import create_s3_storage
-                s3_storage = create_s3_storage()
+                s3_config = export_options.get('s3_config', {})
+                s3_storage = create_s3_storage(s3_config)
                 if s3_storage:
                     project_folder = export_options.get('s3_project_folder', 'batch-processing')
                     s3_result = s3_storage.upload_file(

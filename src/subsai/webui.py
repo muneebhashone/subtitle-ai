@@ -355,6 +355,7 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                         if batch_s3_upload:
                             export_options['s3_upload'] = True
                             export_options['s3_project_folder'] = batch_s3_project
+                            export_options['s3_config'] = _get_s3_config_from_session_state()
                         
                         batch_processor.add_job(
                             file_path=file_info['path'],

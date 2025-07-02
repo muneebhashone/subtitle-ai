@@ -472,13 +472,14 @@ class BatchProcessor:
             try:
                 from subsai.storage.s3_storage import create_s3_storage
                 s3_config = export_options.get('s3_config', {})
+                self.logger.debug(f"S3 config received: enabled={s3_config.get('enabled')}, bucket={s3_config.get('bucket_name')}")
                 s3_storage = create_s3_storage(s3_config)
                 if s3_storage:
                     project_folder = export_options.get('s3_project_folder', 'batch-processing')
-                    s3_result = s3_storage.upload_file(
-                        str(output_path),
-                        filename,
-                        project_folder
+                    s3_result = s3_storage.upload_subtitle_file(
+                        file_path=str(output_path),
+                        project_name=project_folder,
+                        custom_filename=filename
                     )
                     if s3_result['success']:
                         result_info['s3_url'] = s3_result['s3_url']
@@ -498,8 +499,8 @@ class BatchProcessor:
                         self.logger.warning(f"S3 upload failed for {filename}: {s3_result['message']}")
                         result_info['s3_error'] = s3_result['message']
                 else:
-                    self.logger.warning("S3 storage not available")
-                    result_info['s3_error'] = "S3 storage not configured"
+                    self.logger.warning(f"S3 storage not available - config: {s3_config}")
+                    result_info['s3_error'] = "S3 storage not configured or disabled"
             except Exception as e:
                 self.logger.error(f"S3 upload error for {filename}: {e}")
                 result_info['s3_error'] = str(e)

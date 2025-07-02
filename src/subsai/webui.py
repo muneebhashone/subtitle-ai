@@ -261,7 +261,7 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                 )
                 
                 # S3 path preview
-                s3_config = get_s3_config()
+                s3_config = _get_s3_config_from_session_state()
                 if s3_config.get('bucket_name'):
                     st.info(f"📍 S3 Path: `{s3_config['bucket_name']}/{batch_s3_project}/`")
         

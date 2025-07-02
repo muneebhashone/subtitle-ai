@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    network_mode: host
     ports:
       - "8501:8501"
     extra_hosts:
@@ -19,16 +20,3 @@ services:
           devices:
             - driver: nvidia
               capabilities: [gpu]
-
-  subsai-webui-cpu:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "8502:8501"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    env_file:
-      - .env
-    volumes:
-      - ./data:/subsai/data

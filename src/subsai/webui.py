@@ -67,6 +67,9 @@ def _get_s3_config_from_session_state() -> dict:
         else:
             config[config_name] = S3_CONFIG_SCHEMA[config_name]['default']
     
+    # Override 'enabled' with the actual checkbox value
+    config['enabled'] = st.session_state.get('s3_enabled', False)
+    
     # Add environment variables
     config['bucket_name'] = os.getenv('AWS_BUCKET_NAME', '')
     config['region'] = os.getenv('AWS_REGION', 'us-east-1')

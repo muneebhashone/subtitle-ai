@@ -12,7 +12,7 @@ from .models import User, UserProject
 def render_login_page():
     """Render the login page"""
     st.set_page_config(
-        page_title="SubsAI - Login",
+        page_title="AION SRT - Login",
         page_icon="🔐",
         layout="centered"
     )
@@ -21,8 +21,15 @@ def render_login_page():
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        st.title("🎞️ SubsAI")
-        st.subheader("AI Transcription Tool")
+        # Display AION logo
+        try:
+            logo_path = "https://img1.wsimg.com/isteam/ip/9c622456-5f71-4284-96ff-893018ba6b31/blob-79abe2c.png"
+            st.image(logo_path, width=200)
+        except Exception:
+            st.title("🎞️ AION SRT")
+        
+        st.subheader("Effortless SRT Subtitling for your content")
+        st.markdown("**Professional AI-powered subtitle generation**")
         
         AuthUtils.show_login_form()
 
@@ -37,13 +44,14 @@ def render_user_dashboard():
         st.error("Authentication error. Please login again.")
         return
     
-    st.title(f"👋 Welcome, {user.username}!")
+    st.title(f"👋 Welcome to AION SRT, {user.username}!")
+    st.markdown("**Your AI-powered subtitle generation workspace**")
     
     # User info and logout in sidebar
     AuthUtils.show_user_info(user, "_dashboard")
     
     # Main dashboard content
-    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📁 My Projects", "⚙️ Settings"])
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📁 SRT Projects", "⚙️ Settings"])
     
     with tab1:
         render_dashboard_overview(user)
@@ -57,7 +65,8 @@ def render_user_dashboard():
 
 def render_dashboard_overview(user: User):
     """Render dashboard overview"""
-    st.subheader("📊 Dashboard Overview")
+    st.subheader("📊 AION SRT Dashboard Overview")
+    st.info("🚀 **Ultra-fast subtitle generation** with high accuracy across 100+ languages. Enterprise-grade quality for content creators and professionals.")
     
     # Quick stats
     col1, col2, col3, col4 = st.columns(4)
@@ -81,7 +90,7 @@ def render_dashboard_overview(user: User):
     
     # Recent projects
     if projects:
-        st.subheader("📁 Recent Projects")
+        st.subheader("📁 Recent SRT Projects")
         recent_projects = sorted(projects, key=lambda x: x.updated_at or x.created_at, reverse=True)[:5]
         
         for project in recent_projects:
@@ -90,35 +99,37 @@ def render_dashboard_overview(user: User):
                 st.write(f"**Created:** {project.created_at.strftime('%Y-%m-%d %H:%M') if project.created_at else 'Unknown'}")
                 st.write(f"**Updated:** {project.updated_at.strftime('%Y-%m-%d %H:%M') if project.updated_at else 'Unknown'}")
     else:
-        st.info("🚀 No projects yet. Start by creating your first subtitle project!")
+        st.info("🚀 No subtitle projects yet. Start by creating your first AION SRT project for professional subtitle generation!")
     
     # Quick actions
-    st.subheader("🚀 Quick Actions")
+    st.subheader("🚀 AION SRT Quick Actions")
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("📝 Start Single File Processing", type="primary"):
+        if st.button("📝 Single File SRT Generation", type="primary"):
             st.session_state.current_page = "single_file"
             st.experimental_rerun()
     
     with col2:
-        if st.button("🔄 Start Batch Processing"):
+        if st.button("🔄 Enterprise Batch SRT Processing"):
             st.session_state.current_page = "batch_processing"
             st.experimental_rerun()
 
 
 def render_user_projects(user: User):
     """Render user projects management"""
-    st.subheader("📁 My Projects")
+    st.subheader("📁 My AION SRT Projects")
+    st.info("🎬 **Professional Subtitle Projects** - Organize your content with AION SRT's enterprise-grade subtitle generation")
     
     auth = AuthUtils.init_auth()
     
     # Add new project form
-    with st.expander("➕ Create New Project", expanded=False):
+    with st.expander("➕ Create New AION SRT Project", expanded=False):
+        st.markdown("**Create a new project for professional subtitle generation with multi-language support**")
         with st.form("new_project_form"):
-            project_name = st.text_input("Project Name", max_chars=100)
-            project_description = st.text_area("Description", max_chars=500)
-            submit = st.form_submit_button("Create Project")
+            project_name = st.text_input("Project Name", max_chars=100, help="Name your subtitle project (e.g., 'Marketing Video Q1 2025')")
+            project_description = st.text_area("Description", max_chars=500, help="Describe your project goals, target languages, and content type")
+            submit = st.form_submit_button("Create AION SRT Project")
             
             if submit:
                 if project_name.strip():
@@ -130,7 +141,7 @@ def render_user_projects(user: User):
                     
                     project_id = auth.auth.db.create_project(project)
                     if project_id:
-                        st.success(f"Project '{project_name}' created successfully!")
+                        st.success(f"🎉 AION SRT project '{project_name}' created successfully! Ready for professional subtitle generation.")
                         st.experimental_rerun()
                     else:
                         st.error("Failed to create project")
@@ -209,12 +220,13 @@ def render_user_projects(user: User):
                             st.session_state.editing_project = None
                             st.experimental_rerun()
     else:
-        st.info("🚀 No projects yet. Create your first project above!")
+        st.info("🚀 No AION SRT projects yet. Create your first professional subtitle project above to get started with enterprise-grade subtitle generation!")
 
 
 def render_user_settings(user: User):
     """Render user settings page"""
-    st.subheader("⚙️ User Settings")
+    st.subheader("⚙️ AION SRT Account Settings")
+    st.info("👤 **Professional Account Management** - Manage your AION SRT subtitle generation account")
     
     auth = AuthUtils.init_auth()
     
@@ -282,7 +294,8 @@ def render_admin_panel():
         st.error("Authentication error. Please login again.")
         return
     
-    st.title("🔧 Admin Panel")
+    st.title("🔧 AION SRT - Admin Panel")
+    st.markdown("**Enterprise administration for AION SRT subtitle generation platform**")
     
     # Admin info in sidebar
     AuthUtils.show_user_info(user, "_admin")
@@ -305,7 +318,8 @@ def render_admin_panel():
 
 def render_user_management():
     """Render user management section"""
-    st.subheader("👥 User Management")
+    st.subheader("👥 AION SRT User Management")
+    st.info("💼 **Enterprise User Administration** - Manage access to AION SRT's professional subtitle generation platform")
     
     auth = AuthUtils.init_auth()
     
@@ -383,7 +397,8 @@ def render_user_management():
 
 def render_system_stats():
     """Render system statistics"""
-    st.subheader("📊 System Statistics")
+    st.subheader("📊 AION SRT System Statistics")
+    st.info("📈 **Platform Analytics** - Monitor AION SRT subtitle generation platform performance and usage")
     
     auth = AuthUtils.init_auth()
     
@@ -442,7 +457,8 @@ def render_system_stats():
 
 def render_system_settings():
     """Render system settings"""
-    st.subheader("⚙️ System Settings")
+    st.subheader("⚙️ AION SRT System Settings")
+    st.info("🔧 **Enterprise Configuration** - Configure AION SRT platform settings and maintenance")
     
     auth = AuthUtils.init_auth()
     

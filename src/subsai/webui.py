@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
-AI Transcription Tool Web User Interface (webui)
+AION SRT - AI-Powered Subtitle Generation Web Interface
+Effortless SRT Subtitling for your content
 """
 
 import importlib
@@ -35,9 +36,9 @@ from streamlit.web import cli as stcli
 from tempfile import NamedTemporaryFile
 import time
 
-__author__ = "hashone"
-__contact__ = ""
-__copyright__ = "Copyright 2025,"
+__author__ = "AION Voice AI"
+__contact__ = "hello@aionvoice.ai"
+__copyright__ = "Copyright 2025, AION Voice AI"
 __deprecated__ = False
 __license__ = "GPLv3"
 __version__ = importlib.metadata.version('subsai')
@@ -194,8 +195,8 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
     """
     Render UI for batch processing of multiple files.
     """
-    st.title("🔄 Batch Processing")
-    st.info("📁 Upload multiple media files and configure each one independently. Files larger than 10GB are supported!")
+    st.title("🔄 AION SRT - Batch Processing")
+    st.info("📁 Process multiple media files simultaneously with enterprise-grade efficiency. Upload files up to 10GB each and generate subtitles with high accuracy across 100+ languages.")
     
     # Show user context if provided
     if user:
@@ -405,7 +406,7 @@ def render_batch_progress_dashboard(batch_processor: BatchProcessor):
         st.experimental_rerun()
     
     st.write("---")
-    st.subheader("📊 Batch Processing Dashboard")
+    st.subheader("📊 AION SRT - Processing Dashboard")
     
     # Overall progress
     col1, col2, col3, col4 = st.columns(4)
@@ -660,10 +661,13 @@ def webui() -> None:
     
     # Set page config
     st.set_page_config(
-        page_title=f'SubsAI - {user.username}',
+        page_title=f'AION SRT - {user.username}',
         page_icon="🎞️",
         menu_items={
-            'About': f"### AI Transcription Tool \nv{__version__} "
+            'About': f"### AION SRT - AI-Powered Subtitle Generation \nv{__version__} "
+                     f"\n \nEffortless SRT Subtitling for your content"
+                     f"\n \n🌐 Visit: https://aionvoice.ai"
+                     f"\n📧 Contact: hello@aionvoice.ai"
                      f"\n \nLicense: GPLv3"
         },
         layout="wide",
@@ -676,7 +680,15 @@ def webui() -> None:
     
     # Sidebar navigation
     with st.sidebar:
-        st.title("🎞️ SubsAI")
+        # Display AION logo
+        try:
+            logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "public", "aion-logo.jpeg")
+            if os.path.exists(logo_path):
+                st.image(logo_path, width=150)
+            else:
+                st.title("🎞️ SubsAI")
+        except Exception:
+            st.title("🎞️ SubsAI")
         
         # User info
         AuthUtils.show_user_info(user, "_nav")
@@ -686,8 +698,8 @@ def webui() -> None:
         
         pages = {
             "dashboard": "👋 Dashboard",
-            "single_file": "📝 Single File",
-            "batch_processing": "🔄 Batch Processing"
+            "single_file": "📝 Single File SRT",
+            "batch_processing": "🔄 Batch SRT Processing"
         }
         
         # Add admin page for admin users
@@ -718,8 +730,8 @@ def render_single_file_processing(user):
     """
     Render single file processing page with user authentication
     """
-    st.title("📝 Single File Processing")
-    st.info("🎯 Upload or select a single media file for transcription and subtitle generation.")
+    st.title("📝 AION SRT - Single File Processing")
+    st.info("🎯 Upload your media file and generate professional subtitles in seconds with ultra-fast AI transcription. Perfect for content creators and professionals.")
     
     if 'transcribed_subs' in st.session_state:
         subs = st.session_state['transcribed_subs']
@@ -752,7 +764,7 @@ def render_single_file_processing(user):
                 st.info(f"📋 Working on project: **{project.name}**")
     
     with st.sidebar:
-        st.title("Settings")
+        st.title("AION SRT Settings")
     
     with st.expander('Media file', expanded=True):
         file_mode = st.selectbox("Select file mode", ['Local path', 'Upload'], index=0,
@@ -780,7 +792,7 @@ def render_single_file_processing(user):
     with st.sidebar.expander('Model Description', expanded=True):
             info = subs_ai.model_info(stt_model_name)
             st.info(info['description'] + '\n' + info['url'])
-            st.info('💡 **Simplified UX**: This tool now focuses on the essential options for a clean user experience. Source and target language settings are the only required configurations.')
+            st.info('💡 **AION SRT Excellence**: Ultra-fast subtitle generation with high accuracy transcription. Enterprise-grade quality with simplified configuration for content creators and professionals.')
 
     configs_mode = st.selectbox("Select Configs Mode", ['Manual', 'Load from local file'], index=0,
                                 help='Play manually with the model configs or load them from an exported json file.')
@@ -938,7 +950,7 @@ def render_single_file_processing(user):
         advanced_tool = st.selectbox('Advanced tools', options=['', *list(ADVANCED_TOOLS_CONFIGS.keys())],
                                      help='some post processing tools')
         if advanced_tool == 'Translation':
-            st.info('Translate subtitles using DeepSeek-R1 1.5B AI translation model')
+            st.info('Translate subtitles using AION\'s advanced AI translation - supports 100+ languages with high accuracy')
             
             # Simple language selection
             available_languages = [

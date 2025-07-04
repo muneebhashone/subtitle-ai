@@ -682,13 +682,10 @@ def webui() -> None:
     with st.sidebar:
         # Display AION logo
         try:
-            logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "public", "aion-logo.jpeg")
-            if os.path.exists(logo_path):
-                st.image(logo_path, width=150)
-            else:
-                st.title("🎞️ SubsAI")
+            logo_path = "https://img1.wsimg.com/isteam/ip/9c622456-5f71-4284-96ff-893018ba6b31/blob-79abe2c.png"
+            st.image(logo_path, width=150)
         except Exception:
-            st.title("🎞️ SubsAI")
+            st.title("🎞️ AION SRT")
         
         # User info
         AuthUtils.show_user_info(user, "_nav")

@@ -128,7 +128,7 @@ def require_auth(func: Callable) -> Callable:
         auth = st.session_state.auth_manager
         
         if not auth.is_authenticated():
-            st.error("🔒 Authentication required. Please log in to access this page.")
+            st.error("🔒 **AION SRT Access Required** - Please log in to access the professional subtitle generation platform.")
             st.stop()
         
         return func(*args, **kwargs)
@@ -155,11 +155,11 @@ def require_admin(func: Callable) -> Callable:
         auth = st.session_state.auth_manager
         
         if not auth.is_authenticated():
-            st.error("🔒 Authentication required. Please log in to access this page.")
+            st.error("🔒 **AION SRT Access Required** - Please log in to access the professional subtitle generation platform.")
             st.stop()
         
         if not auth.is_admin():
-            st.error("🚫 Admin privileges required to access this page.")
+            st.error("🚫 **AION SRT Enterprise Admin Required** - Administrator privileges needed to access platform management.")
             st.stop()
         
         return func(*args, **kwargs)
@@ -223,7 +223,7 @@ class AuthUtils:
     @staticmethod
     def show_login_form() -> None:
         """Display login form"""
-        st.title("🔐 Login")
+        st.title("🔐 Access AION SRT Platform")
         
         auth = AuthUtils.init_auth()
         
@@ -245,7 +245,7 @@ class AuthUtils:
         
         # Show default admin credentials info if no users exist yet
         if auth.auth.db.get_user_count() <= 1:
-            st.info("💡 **First time setup:** Use username 'admin' and password 'admin123' to login as administrator. Please change these credentials after login!")
+            st.info("💡 **AION SRT First Time Setup:** Use username 'admin' and password 'admin123' to access the administrator panel. Please update these credentials immediately for enterprise security!")
     
     @staticmethod
     def check_auth_and_redirect() -> bool:

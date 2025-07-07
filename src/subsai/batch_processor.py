@@ -16,6 +16,7 @@ import logging
 
 from subsai import SubsAI, Tools
 from .analytics import AnalyticsService
+from .utils.file_manager import cleanup_batch_output_dir
 
 
 class JobStatus(Enum):
@@ -382,6 +383,15 @@ class BatchProcessor:
             
             self.logger.info(f"Successfully completed job {job.file_id}")
             
+            # Clean up temporary media files after successful completion
+            # (Output files are preserved for download)
+            try:
+                self.logger.debug(f"Cleaning up temporary media files for job {job.file_id}")
+                # Note: Media file cleanup is handled by the web UI's BatchFileManager
+                # We only clean up when explicitly requested or on job removal
+            except Exception as cleanup_error:
+                self.logger.warning(f"Failed to cleanup files for job {job.file_id}: {cleanup_error}")
+            
         except Exception as e:
             self.logger.error(f"Error processing job {job.file_id}: {e}")
             
@@ -424,6 +434,15 @@ class BatchProcessor:
                 JobStatus.FAILED,
                 error_message=str(e)
             )
+            
+            # Clean up temporary media files on failure
+            try:
+                self.logger.debug(f"Cleaning up temporary media files for failed job {job.file_id}")
+                # Note: Media file cleanup is handled by the web UI's BatchFileManager
+                # We only clean up when explicitly requested or on job removal
+            except Exception as cleanup_error:
+                self.logger.warning(f"Failed to cleanup files for failed job {job.file_id}: {cleanup_error}")
+            
             raise
     
     def _export_subtitle_file(self, subs, filename: str, format_ext: str, export_options: Dict, job: JobConfig):
@@ -545,5 +564,20 @@ class BatchProcessor:
         return False
     
     def clear_completed(self):
-        """Clear completed and failed jobs"""
+        """Clear completed and failed jobs and clean up their output files"""
+        # Get completed jobs before clearing
+        completed_jobs = [
+            job for job in self.progress_tracker.get_all_jobs()
+            if job.status in [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED]
+        ]
+        
+        # Clear from tracking
         self.progress_tracker.clear_completed_jobs()
+        
+        # Clean up batch output directories for completed jobs
+        for job in completed_jobs:
+            try:
+                cleanup_batch_output_dir(job.file_id)
+                self.logger.debug(f"Cleaned up batch output directory for job {job.file_id}")
+            except Exception as e:
+                self.logger.warning(f"Failed to cleanup batch output for job {job.file_id}: {e}")

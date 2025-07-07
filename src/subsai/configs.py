@@ -275,3 +275,35 @@ OOONA_CONFIG_SCHEMA = {
 DEFAULT_OOONA_CONFIG = {
     'enabled': True
 }
+
+# File Cleanup Configuration
+FILE_CLEANUP_CONFIG_SCHEMA = {
+    'auto_cleanup_enabled': {
+        'type': bool,
+        'description': 'Enable automatic cleanup of temporary media files',
+        'default': True
+    },
+    'cleanup_delay_seconds': {
+        'type': int,
+        'description': 'Delay in seconds before cleaning up temp files (0 = immediate)',
+        'default': 0
+    },
+    'batch_output_retention_hours': {
+        'type': int,
+        'description': 'Hours to retain batch processing output files',
+        'default': 24
+    },
+    'enable_periodic_cleanup': {
+        'type': bool,
+        'description': 'Enable periodic cleanup of old batch outputs',
+        'default': True
+    }
+}
+
+# Default file cleanup configuration
+DEFAULT_FILE_CLEANUP_CONFIG = {
+    'auto_cleanup_enabled': True,
+    'cleanup_delay_seconds': 0,
+    'batch_output_retention_hours': 24,
+    'enable_periodic_cleanup': True
+}

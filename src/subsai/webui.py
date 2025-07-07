@@ -27,6 +27,7 @@ from st_aggrid import AgGrid, GridUpdateMode, GridOptionsBuilder, DataReturnMode
 from subsai import SubsAI, Tools
 from subsai.configs import ADVANCED_TOOLS_CONFIGS, DEFAULT_S3_CONFIG, S3_CONFIG_SCHEMA
 from subsai.utils import available_subs_formats
+from subsai.utils.file_manager import managed_temp_file, BatchFileManager
 from subsai.storage.s3_storage import create_s3_storage
 from subsai.batch_processor import BatchProcessor, JobStatus, JobConfig
 from subsai.auth.decorators import AuthUtils, require_auth, require_admin
@@ -275,8 +276,14 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
         if 'temp_files' not in st.session_state:
             st.session_state.temp_files = []
         
-        # Clear old temp files
+        # Clear old temp files with proper cleanup
+        if hasattr(st.session_state, 'batch_file_manager'):
+            st.session_state.batch_file_manager.cleanup_all()
         st.session_state.temp_files = []
+        
+        # Initialize batch file manager
+        if 'batch_file_manager' not in st.session_state:
+            st.session_state.batch_file_manager = BatchFileManager()
         
         # Configuration per file
         for i, uploaded_file in enumerate(uploaded_files):
@@ -288,18 +295,15 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                 file_size_mb = f"{uploaded_file.size / (1024*1024):.1f} MB"
             
             with st.expander(f"📄 {uploaded_file.name} ({file_size_mb})", expanded=not use_bulk_config):
-                # Save file temporarily
-                temp_dir = tempfile.TemporaryDirectory()
-                temp_file_path = os.path.join(temp_dir.name, uploaded_file.name)
-                with open(temp_file_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
+                # Save file temporarily with managed cleanup
+                temp_file_path = st.session_state.batch_file_manager.add_temp_file(uploaded_file)
                 
                 # Store temp file info
                 st.session_state.temp_files.append({
                     'name': uploaded_file.name,
                     'path': temp_file_path,
                     'size': uploaded_file.size,
-                    'temp_dir': temp_dir
+                    'managed': True  # Flag to indicate this is managed
                 })
                 
                 if use_bulk_config:
@@ -772,11 +776,9 @@ def render_single_file_processing(user):
         else:
             uploaded_file = st.file_uploader("Choose a media file")
             if uploaded_file is not None:
-                temp_dir = tempfile.TemporaryDirectory()
-                tmp_dir_path = temp_dir.name
-                file_path = os.path.join(tmp_dir_path, uploaded_file.name)
-                file = open(file_path, "wb")
-                file.write(uploaded_file.getbuffer())
+                # Store uploaded file info for managed cleanup
+                st.session_state['uploaded_file'] = uploaded_file
+                file_path = "uploaded_file"  # Placeholder - will be handled by managed context
             else:
                 file_path = ""
 
@@ -828,8 +830,22 @@ def render_single_file_processing(user):
 
     if transcribe_button:
         start_time = time.time()
-        file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-        filename = os.path.basename(file_path)
+        
+        # Handle different file modes
+        if file_mode == 'Local path':
+            # Use local file path directly
+            actual_file_path = file_path
+            file_size = os.path.getsize(actual_file_path) if os.path.exists(actual_file_path) else 0
+            filename = os.path.basename(actual_file_path)
+        else:
+            # Use uploaded file with managed cleanup
+            if 'uploaded_file' in st.session_state:
+                uploaded_file = st.session_state['uploaded_file']
+                filename = uploaded_file.name
+                file_size = len(uploaded_file.getbuffer())
+            else:
+                st.error("No file uploaded")
+                return
         
         # Track transcription start
         if analytics.is_enabled():
@@ -849,7 +865,15 @@ def render_single_file_processing(user):
                 with open(configs_path, 'r', encoding='utf-8') as f:
                     model_config = json.load(f)
             
-            subs = _transcribe(file_path, stt_model_name, model_config)
+            # Use managed temp file for uploaded files
+            if file_mode == 'Local path':
+                subs = _transcribe(actual_file_path, stt_model_name, model_config)
+            else:
+                # Use managed temp file with automatic cleanup
+                with managed_temp_file(uploaded_file=uploaded_file) as temp_file_path:
+                    subs = _transcribe(temp_file_path, stt_model_name, model_config)
+                    # File is automatically cleaned up when exiting this context
+            
             st.session_state['transcribed_subs'] = subs
             processing_time = time.time() - start_time
             

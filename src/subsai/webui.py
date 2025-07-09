@@ -677,6 +677,311 @@ def _transcribe(file_path, model_name, model_config):
     return subs
 
 
+def _process_single_file_with_batch_flow(file_path, filename, file_size, source_language, target_languages, output_formats, 
+                                        device_preference, enable_download, save_local, save_s3, s3_project, 
+                                        progress_placeholder, results_placeholder, user):
+    """
+    Process single file using batch processing workflow
+    
+    :param file_path: path to media file
+    :param filename: name of the file
+    :param file_size: size of the file in bytes
+    :param source_language: source language code
+    :param target_languages: list of target languages
+    :param output_formats: list of output formats
+    :param device_preference: preferred device for processing
+    :param enable_download: whether to enable download buttons
+    :param save_local: whether to save files locally
+    :param save_s3: whether to save to S3
+    :param s3_project: S3 project folder name
+    :param progress_placeholder: Streamlit placeholder for progress
+    :param results_placeholder: Streamlit placeholder for results
+    :param user: current user object
+    :return: dict with results
+    """
+    from subsai.utils import get_optimal_device, is_cuda_available
+    from pathlib import Path
+    import tempfile
+    
+    start_time = time.time()
+    results = []
+    
+    try:
+        # Track transcription start
+        if analytics.is_enabled():
+            analytics.track_transcription_start(
+                user_id=user.id,
+                filename=filename,
+                model='openai/whisper',
+                file_size=file_size,
+                source_language=source_language,
+                target_languages=target_languages,
+                output_formats=output_formats
+            )
+        
+        # Step 1: Initialize device configuration
+        progress_placeholder.info("🔧 Initializing processing device...")
+        
+        def get_model_device_config(model_type, preferred_device):
+            """Get device configuration based on preferences"""
+            if preferred_device == 'auto':
+                device = get_optimal_device()
+            elif preferred_device == 'cpu':
+                device = 'cpu'
+            elif preferred_device.startswith('cuda'):
+                if is_cuda_available():
+                    device = preferred_device
+                else:
+                    device = 'cpu'
+            else:
+                device = get_optimal_device()
+            
+            device_config = {}
+            if model_type == 'openai/whisper':
+                device_config['device'] = device
+            
+            return device_config, device
+        
+        # Step 2: Create model with device handling
+        model_type = 'openai/whisper'
+        model_config = {
+            'source_language': source_language,
+            'target_language': 'transcribe'
+        }
+        
+        device_config, selected_device = get_model_device_config(model_type, device_preference)
+        model_config.update(device_config)
+        
+        progress_placeholder.info(f"🤖 Creating model with device: {selected_device}")
+        
+        try:
+            model = subs_ai.create_model(model_type, model_config)
+        except Exception as model_error:
+            # Handle GPU-specific errors and fallback to CPU
+            error_msg = str(model_error).lower()
+            if any(gpu_error in error_msg for gpu_error in ['cuda', 'gpu', 'device']):
+                progress_placeholder.warning(f"⚠️ GPU model creation failed, falling back to CPU...")
+                
+                # Recreate model with CPU configuration
+                cpu_config = model_config.copy()
+                cpu_config['device'] = 'cpu'
+                if 'device_index' in cpu_config:
+                    del cpu_config['device_index']
+                
+                model = subs_ai.create_model(model_type, cpu_config)
+                selected_device = 'cpu'
+            else:
+                raise model_error
+        
+        # Step 3: Transcribe the audio
+        device_info = f"using {selected_device} device"
+        progress_placeholder.info(f"🎙️ Transcribing audio ({source_language}) {device_info}...")
+        
+        try:
+            base_subs = subs_ai.transcribe(file_path, model)
+        except Exception as transcribe_error:
+            # Handle transcription errors, particularly GPU-related ones
+            error_msg = str(transcribe_error).lower()
+            if any(gpu_error in error_msg for gpu_error in ['cuda', 'gpu', 'device', 'memory']):
+                progress_placeholder.warning(f"⚠️ GPU transcription failed, retrying with CPU...")
+                
+                # Recreate model with CPU-only configuration
+                cpu_config = {
+                    'source_language': source_language,
+                    'target_language': 'transcribe',
+                    'device': 'cpu'
+                }
+                
+                model = subs_ai.create_model(model_type, cpu_config)
+                base_subs = subs_ai.transcribe(file_path, model)
+                selected_device = 'cpu'
+            else:
+                raise transcribe_error
+        
+        # Step 4: Process each target language
+        total_tasks = len(target_languages) * len(output_formats)
+        completed_tasks = 0
+        
+        for target_language in target_languages:
+            # Handle transcription vs translation
+            if target_language == 'transcribe':
+                current_subs = base_subs
+                lang_suffix = source_language if source_language != 'auto' else 'original'
+            else:
+                # Translate to target language
+                progress_placeholder.info(f"🌐 Translating to {target_language}...")
+                
+                current_subs = tools.translate(
+                    subs=base_subs,
+                    source_language=source_language if source_language != 'auto' else 'auto',
+                    target_language=target_language,
+                    model='deepseek-r1:1.5b'
+                )
+                lang_suffix = target_language
+            
+            # Generate files in each requested format
+            for output_format in output_formats:
+                progress_placeholder.info(f"📄 Generating {output_format.upper()} for {target_language}...")
+                
+                # Generate filename
+                base_name = Path(filename).stem
+                if len(target_languages) > 1 or target_languages[0] != 'transcribe':
+                    generated_filename = f"{base_name}-{lang_suffix}.{output_format}"
+                else:
+                    generated_filename = f"{base_name}.{output_format}"
+                
+                # Generate subtitle content
+                if output_format == 'ooona':
+                    # Handle OOONA format conversion
+                    try:
+                        from subsai.storage.ooona_converter import create_ooona_converter
+                        ooona_converter = create_ooona_converter()
+                        if ooona_converter:
+                            input_content = current_subs.to_string(format_='srt')
+                            conversion_result = ooona_converter.convert_subtitle(input_content)
+                            if conversion_result['success']:
+                                subtitle_content = conversion_result['content']
+                            else:
+                                raise Exception(f"OOONA conversion failed: {conversion_result['message']}")
+                        else:
+                            raise Exception("OOONA converter not available")
+                    except ImportError:
+                        raise Exception("OOONA converter not available")
+                else:
+                    # Standard format
+                    subtitle_content = current_subs.to_string(format_=output_format)
+                
+                # Store result
+                result_info = {
+                    'filename': generated_filename,
+                    'format': output_format,
+                    'language': target_language,
+                    'content': subtitle_content,
+                    'size': len(subtitle_content.encode('utf-8'))
+                }
+                
+                # Handle local save
+                if save_local:
+                    try:
+                        local_path = Path(filename).parent / generated_filename
+                        with open(local_path, 'w', encoding='utf-8') as f:
+                            f.write(subtitle_content)
+                        result_info['local_path'] = str(local_path)
+                    except Exception as e:
+                        result_info['local_error'] = str(e)
+                
+                # Handle S3 upload
+                if save_s3:
+                    try:
+                        from subsai.storage.s3_storage import create_s3_storage
+                        s3_config = _get_s3_config_from_session_state()
+                        s3_config['enabled'] = True
+                        s3_storage = create_s3_storage(s3_config)
+                        if s3_storage:
+                            temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=f'.{output_format}')
+                            temp_file.write(subtitle_content)
+                            temp_file.close()
+                            
+                            s3_result = s3_storage.upload_subtitle_file(
+                                file_path=temp_file.name,
+                                project_name=s3_project,
+                                custom_filename=generated_filename
+                            )
+                            if s3_result['success']:
+                                result_info['s3_url'] = s3_result['s3_url']
+                                result_info['s3_upload'] = True
+                            else:
+                                result_info['s3_error'] = s3_result['message']
+                            
+                            # Clean up temp file
+                            Path(temp_file.name).unlink()
+                        else:
+                            result_info['s3_error'] = "S3 storage not configured"
+                    except Exception as e:
+                        result_info['s3_error'] = str(e)
+                
+                results.append(result_info)
+                completed_tasks += 1
+                
+                # Update progress
+                progress_percent = (completed_tasks / total_tasks) * 100
+                progress_placeholder.progress(progress_percent / 100)
+        
+        # Step 5: Calculate processing time and track completion
+        processing_time = time.time() - start_time
+        
+        # Track successful completion
+        if analytics.is_enabled():
+            analytics.track_transcription_complete(
+                user_id=user.id,
+                filename=filename,
+                model='openai/whisper',
+                processing_time=processing_time,
+                success=True
+            )
+            
+            # Record comprehensive file analytics
+            analytics.record_file_processing(
+                user_id=user.id,
+                filename=filename,
+                file_size=file_size,
+                model_used='openai/whisper',
+                processing_time=processing_time,
+                success=True,
+                source_language=source_language,
+                target_languages=[lang for lang in target_languages if lang != 'transcribe'],
+                output_formats=output_formats
+            )
+            
+            # Track translations
+            for target_lang in target_languages:
+                if target_lang != 'transcribe':
+                    analytics.track_translation(
+                        user_id=user.id,
+                        filename=filename,
+                        source_lang=source_language,
+                        target_lang=target_lang
+                    )
+        
+        progress_placeholder.success(f"✅ Processing completed successfully! Generated {len(results)} files in {processing_time:.2f} seconds")
+        
+        return {
+            'success': True,
+            'results': results,
+            'processing_time': processing_time,
+            'device_used': selected_device
+        }
+        
+    except Exception as e:
+        processing_time = time.time() - start_time
+        
+        # Track error
+        if analytics.is_enabled():
+            analytics.track_transcription_complete(
+                user_id=user.id,
+                filename=filename,
+                model='openai/whisper',
+                processing_time=processing_time,
+                success=False,
+                error_message=str(e)
+            )
+            
+            analytics.track_error(
+                user_id=user.id,
+                error_type='single_file_processing_error',
+                error_message=str(e),
+                filename=filename
+            )
+        
+        progress_placeholder.error(f"❌ Processing failed: {str(e)}")
+        
+        return {
+            'success': False,
+            'error': str(e),
+            'processing_time': processing_time
+        }
+
+
 def _subs_df(subs):
     """
     helper function that returns a :class:`pandas.DataFrame` from subs object
@@ -817,7 +1122,7 @@ def render_single_file_processing(user):
     with st.sidebar:
         st.title("AION SRT Settings")
     
-    with st.expander('Media file', expanded=True):
+    with st.expander('📁 Media File', expanded=True):
         file_mode = st.selectbox("Select file mode", ['Local path', 'Upload'], index=0,
                                  help='Use `Local Path` if you are on a local machine, or use `Upload` to '
                                       'upload your files if you are using a remote server')
@@ -834,25 +1139,91 @@ def render_single_file_processing(user):
 
         st.session_state['file_path'] = file_path
 
-    stt_model_name = st.selectbox("Select Model", subs_ai.available_models(), index=0,
-                                  help='Select an AI model to use for '
-                                       'transcription')
-
-    with st.sidebar.expander('Model Description', expanded=True):
-            info = subs_ai.model_info(stt_model_name)
-            st.info(info['description'] + '\n' + info['url'])
-            st.info('💡 **AION SRT Excellence**: Ultra-fast subtitle generation with high accuracy transcription. Enterprise-grade quality with simplified configuration for content creators and professionals.')
-
-    configs_mode = st.selectbox("Select Configs Mode", ['Manual', 'Load from local file'], index=0,
-                                help='Play manually with the model configs or load them from an exported json file.')
-
-    with st.sidebar.expander('Model Configs', expanded=False):
-            config_schema = SubsAI.config_schema(stt_model_name)
-
-            if configs_mode == 'Manual':
-                _generate_config_ui(stt_model_name, config_schema)
+    # Processing Configuration
+    with st.expander("⚙️ Processing Configuration", expanded=False):
+        from subsai.utils import get_available_devices, is_cuda_available
+        
+        col_device1, col_device2 = st.columns(2)
+        
+        with col_device1:
+            available_devices = get_available_devices()
+            device_options = ['auto'] + available_devices
+            
+            current_device = st.session_state.get('single_device_preference', 'auto')
+            device_preference = st.selectbox(
+                "Processing Device",
+                options=device_options,
+                index=device_options.index(current_device) if current_device in device_options else 0,
+                help="Choose processing device: 'auto' for optimal selection, 'cpu' for CPU-only, or specific CUDA device",
+                key="single_device_select"
+            )
+            
+            st.session_state['single_device_preference'] = device_preference
+        
+        with col_device2:
+            # Show device status
+            cuda_available = is_cuda_available()
+            if cuda_available:
+                st.success("✅ CUDA GPU Available")
+                import torch
+                if torch.cuda.is_available():
+                    gpu_count = torch.cuda.device_count()
+                    st.info(f"🔧 {gpu_count} GPU(s) detected")
             else:
-                configs_path = st.text_input('Configs path', help='Absolute path of the configs file')
+                st.warning("⚠️ CUDA not available - using CPU")
+                
+            # Show current device selection
+            if device_preference == 'auto':
+                optimal_device = 'cuda:0' if cuda_available else 'cpu'
+                st.info(f"🎯 Auto-selected: {optimal_device}")
+            else:
+                st.info(f"🎯 Selected: {device_preference}")
+
+    # Language Configuration
+    with st.expander("🌐 Language Configuration", expanded=True):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            source_language = st.selectbox(
+                "Source language",
+                options=['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                index=0,
+                help="Language of the input audio/video file"
+            )
+        
+        with col2:
+            target_languages = st.multiselect(
+                "Target languages",
+                options=['transcribe', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                default=['transcribe'],
+                help="Languages to transcribe/translate to ('transcribe' = same as source)"
+            )
+
+    # Output Configuration
+    with st.expander("📄 Output Configuration", expanded=True):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            output_formats = st.multiselect(
+                "Output formats",
+                options=['srt', 'vtt', 'ass', 'sub', 'ooona'],
+                default=['srt', 'ooona'],
+                help="Subtitle formats to generate"
+            )
+        
+        with col2:
+            # Storage options
+            st.write("**Storage Options**")
+            enable_download = st.checkbox("Enable download", value=True, help="Provide download buttons for generated files")
+            save_local = st.checkbox("Save locally", value=False, help="Save files to local directory")
+            save_s3 = st.checkbox("Save to S3", value=False, help="Upload files to S3 bucket (requires S3 configuration)")
+            
+            if save_s3:
+                s3_project = st.text_input(
+                    "S3 Project folder",
+                    value="single-file-processing",
+                    help="Folder name in S3 bucket"
+                )
 
     # S3 Configuration Panel
     with st.sidebar.expander('S3 Storage', expanded=False):
@@ -875,11 +1246,28 @@ def render_single_file_processing(user):
                        "- OOONA_API_KEY\n"
                        "- OOONA_API_NAME")
 
-    transcribe_button = st.button('Transcribe', type='primary')
-    transcribe_loading_placeholder = st.empty()
+    # Validation before processing
+    if not target_languages:
+        st.error("Please select at least one target language")
+        return
+    
+    if not output_formats:
+        st.error("Please select at least one output format")
+        return
+    
+    if not any([enable_download, save_local, save_s3]):
+        st.error("Please select at least one storage option")
+        return
 
-    if transcribe_button:
-        start_time = time.time()
+    process_button = st.button('🚀 Process File', type='primary')
+    progress_placeholder = st.empty()
+    results_placeholder = st.empty()
+
+    if process_button:
+        # Validate file input
+        if not file_path:
+            st.error("Please select a media file")
+            return
         
         # Handle different file modes
         if file_mode == 'Local path':
@@ -897,83 +1285,104 @@ def render_single_file_processing(user):
                 st.error("No file uploaded")
                 return
         
-        # Track transcription start
-        if analytics.is_enabled():
-            analytics.track_transcription_start(
-                user_id=user.id,
+        # Process the file with the new batch processing workflow
+        if file_mode == 'Local path':
+            result = _process_single_file_with_batch_flow(
+                file_path=actual_file_path,
                 filename=filename,
-                model=stt_model_name,
                 file_size=file_size,
-                source_language='auto'  # Default for single file processing
+                source_language=source_language,
+                target_languages=target_languages,
+                output_formats=output_formats,
+                device_preference=device_preference,
+                enable_download=enable_download,
+                save_local=save_local,
+                save_s3=save_s3,
+                s3_project=s3_project if save_s3 else None,
+                progress_placeholder=progress_placeholder,
+                results_placeholder=results_placeholder,
+                user=user
             )
-        
-        try:
-            config_schema = SubsAI.config_schema(stt_model_name)
-            if configs_mode == 'Manual':
-                model_config = _get_config_from_session_state(stt_model_name, config_schema, notification_placeholder)
-            else:
-                with open(configs_path, 'r', encoding='utf-8') as f:
-                    model_config = json.load(f)
-            
-            # Use managed temp file for uploaded files
-            if file_mode == 'Local path':
-                subs = _transcribe(actual_file_path, stt_model_name, model_config)
-            else:
-                # Use managed temp file with automatic cleanup
-                with managed_temp_file(uploaded_file=uploaded_file) as temp_file_path:
-                    subs = _transcribe(temp_file_path, stt_model_name, model_config)
-                    # File is automatically cleaned up when exiting this context
-            
-            st.session_state['transcribed_subs'] = subs
-            processing_time = time.time() - start_time
-            
-            # Track successful transcription
-            if analytics.is_enabled():
-                analytics.track_transcription_complete(
-                    user_id=user.id,
-                    filename=filename,
-                    model=stt_model_name,
-                    processing_time=processing_time,
-                    success=True
-                )
-                
-                # Record comprehensive file analytics
-                analytics.record_file_processing(
-                    user_id=user.id,
+        else:
+            # Use managed temp file with automatic cleanup
+            with managed_temp_file(uploaded_file=uploaded_file) as temp_file_path:
+                result = _process_single_file_with_batch_flow(
+                    file_path=temp_file_path,
                     filename=filename,
                     file_size=file_size,
-                    model_used=stt_model_name,
-                    processing_time=processing_time,
-                    success=True,
-                    source_language='auto',
-                    output_formats=['srt']  # Default for single file processing
+                    source_language=source_language,
+                    target_languages=target_languages,
+                    output_formats=output_formats,
+                    device_preference=device_preference,
+                    enable_download=enable_download,
+                    save_local=save_local,
+                    save_s3=save_s3,
+                    s3_project=s3_project if save_s3 else None,
+                    progress_placeholder=progress_placeholder,
+                    results_placeholder=results_placeholder,
+                    user=user
                 )
-            
-            transcribe_loading_placeholder.success('Done!', icon="✅")
-            
-        except Exception as e:
-            processing_time = time.time() - start_time
-            
-            # Track failed transcription
-            if analytics.is_enabled():
-                analytics.track_transcription_complete(
-                    user_id=user.id,
-                    filename=filename,
-                    model=stt_model_name,
-                    processing_time=processing_time,
-                    success=False,
-                    error_message=str(e)
-                )
+        
+        # Display results
+        if result['success']:
+            with results_placeholder.container():
+                st.success(f"🎉 Processing completed successfully!")
+                st.info(f"⏱️ Processing time: {result['processing_time']:.2f} seconds")
+                st.info(f"🔧 Device used: {result['device_used']}")
                 
-                analytics.track_error(
-                    user_id=user.id,
-                    error_type='transcription_error',
-                    error_message=str(e),
-                    filename=filename
-                )
-            
-            transcribe_loading_placeholder.error(f'Transcription failed: {str(e)}', icon="❌")
-            raise
+                # Display generated files
+                st.subheader("📄 Generated Files")
+                
+                for file_result in result['results']:
+                    col1, col2, col3 = st.columns([2, 1, 1])
+                    
+                    with col1:
+                        st.write(f"**{file_result['filename']}**")
+                        st.write(f"📊 {file_result['format'].upper()} • {file_result['language']} • {file_result['size']:,} bytes")
+                        
+                        # Show storage status
+                        if file_result.get('local_path'):
+                            st.success(f"💾 Saved locally: {file_result['local_path']}")
+                        elif file_result.get('local_error'):
+                            st.error(f"❌ Local save failed: {file_result['local_error']}")
+                        
+                        if file_result.get('s3_upload'):
+                            st.success(f"☁️ Uploaded to S3: {file_result['s3_url']}")
+                        elif file_result.get('s3_error'):
+                            st.error(f"❌ S3 upload failed: {file_result['s3_error']}")
+                    
+                    with col2:
+                        if enable_download:
+                            st.download_button(
+                                "📥 Download",
+                                data=file_result['content'],
+                                file_name=file_result['filename'],
+                                mime='text/plain',
+                                key=f"download_{file_result['filename']}"
+                            )
+                    
+                    with col3:
+                        # Download analytics tracking
+                        if analytics.is_enabled():
+                            analytics.track_download(
+                                user_id=user.id,
+                                filename=file_result['filename'],
+                                format=file_result['format'],
+                                file_size=file_result['size']
+                            )
+                
+                # Store results for legacy compatibility
+                if result['results']:
+                    # Store the first transcription result for legacy subtitle display
+                    first_result = result['results'][0]
+                    if first_result['language'] == 'transcribe':
+                        # For transcription results, we need to recreate the subs object
+                        # This is a simplified approach - in a production system, we'd store the actual subs object
+                        st.session_state['transcribed_subs'] = first_result['content']
+        else:
+            with results_placeholder.container():
+                st.error(f"❌ Processing failed: {result['error']}")
+                st.info(f"⏱️ Processing time: {result['processing_time']:.2f} seconds")
 
     with st.expander('Post Processing Tools', expanded=False):
         basic_tool = st.selectbox('Basic tools', options=['', 'Set time', 'Shift'],

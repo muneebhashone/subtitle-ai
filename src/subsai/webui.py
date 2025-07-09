@@ -949,7 +949,8 @@ def _process_single_file_with_batch_flow(file_path, filename, file_size, source_
             'success': True,
             'results': results,
             'processing_time': processing_time,
-            'device_used': selected_device
+            'device_used': selected_device,
+            'base_subs': base_subs  # Include the base SSAFile object for legacy compatibility
         }
         
     except Exception as e:
@@ -1372,13 +1373,9 @@ def render_single_file_processing(user):
                             )
                 
                 # Store results for legacy compatibility
-                if result['results']:
-                    # Store the first transcription result for legacy subtitle display
-                    first_result = result['results'][0]
-                    if first_result['language'] == 'transcribe':
-                        # For transcription results, we need to recreate the subs object
-                        # This is a simplified approach - in a production system, we'd store the actual subs object
-                        st.session_state['transcribed_subs'] = first_result['content']
+                if result['results'] and 'base_subs' in result:
+                    # Store the base SSAFile object for legacy compatibility
+                    st.session_state['transcribed_subs'] = result['base_subs']
         else:
             with results_placeholder.container():
                 st.error(f"❌ Processing failed: {result['error']}")
@@ -1565,18 +1562,39 @@ def render_single_file_processing(user):
                 }}
         }
 
+        # Handle file path for preview
+        actual_file_path = None
         if 'file_path' in st.session_state and st.session_state['file_path'] != '':
-            if os.path.getsize(file_path) > st.web.server.server.get_max_message_size_bytes():
-                print(f"Media file cannot be previewed: size exceeds the message size limit of {st.web.server.server.get_max_message_size_bytes() / int(1e6):.2f} MB.")
-                st.info(f'Media file cannot be previewed: size exceeds the size limit of {st.web.server.server.get_max_message_size_bytes() / int(1e6):.2f} MB.'
-                        f' But you can try to run the transcription as usual.', icon="🚨")
-                st.info(f' You can increase the limit by running: subsai-webui --server.maxMessageSize Your_desired_size_limit_in_MB')
-                st.info(f"If it didn't work, please use the command line interface instead.")
-            else:
-                event = st_player(_media_file_base64(st.session_state['file_path']), **options, height=500, key="player")
+            if file_mode == 'Local path' and st.session_state['file_path'] != 'uploaded_file':
+                actual_file_path = st.session_state['file_path']
+            elif file_mode == 'Upload' and 'uploaded_file' in st.session_state:
+                # For uploaded files, we can't preview them easily, so skip the preview
+                st.info("📁 File uploaded successfully. Preview not available for uploaded files.")
+        
+        if actual_file_path and os.path.exists(actual_file_path):
+            try:
+                if os.path.getsize(actual_file_path) > st.web.server.server.get_max_message_size_bytes():
+                    print(f"Media file cannot be previewed: size exceeds the message size limit of {st.web.server.server.get_max_message_size_bytes() / int(1e6):.2f} MB.")
+                    st.info(f'Media file cannot be previewed: size exceeds the size limit of {st.web.server.server.get_max_message_size_bytes() / int(1e6):.2f} MB.'
+                            f' But you can try to run the transcription as usual.', icon="🚨")
+                    st.info(f' You can increase the limit by running: subsai-webui --server.maxMessageSize Your_desired_size_limit_in_MB')
+                    st.info(f"If it didn't work, please use the command line interface instead.")
+                else:
+                    event = st_player(_media_file_base64(actual_file_path), **options, height=500, key="player")
+            except Exception as e:
+                st.warning(f"Could not preview file: {str(e)}")
+        elif actual_file_path and not os.path.exists(actual_file_path):
+            st.warning(f"File not found: {actual_file_path}")
 
     with st.expander('Export subtitles file'):
-        media_file = Path(file_path)
+        # Handle file path for export operations
+        if file_mode == 'Local path' and file_path != 'uploaded_file':
+            media_file = Path(file_path)
+        elif file_mode == 'Upload' and 'uploaded_file' in st.session_state:
+            # For uploaded files, use the uploaded file name
+            media_file = Path(st.session_state['uploaded_file'].name)
+        else:
+            media_file = Path("unknown_file")
         
         # Build format list (include .ooona if OOONA is enabled)
         format_options = available_subs_formats()
@@ -1750,25 +1768,45 @@ def render_single_file_processing(user):
                 print(e)
 
     with st.expander('Merge subtitles with video'):
-        media_file = Path(file_path)
+        # Handle file path for merge operations
+        if file_mode == 'Local path' and file_path != 'uploaded_file':
+            merge_media_file = Path(file_path)
+        elif file_mode == 'Upload' and 'uploaded_file' in st.session_state:
+            # For uploaded files, merging is not supported easily
+            st.warning("⚠️ Video merging is not supported for uploaded files. Please use local file path mode.")
+            return
+        else:
+            st.warning("⚠️ Please select a valid media file for merging.")
+            return
+            
         subs_lang = st.text_input('Subtitles language', value='English', key='merged_video_subs_lang')
-        exported_video_filename = st.text_input('Filename', value=f"{media_file.stem}-subs-merged", key='merged_video_out_file')
+        exported_video_filename = st.text_input('Filename', value=f"{merge_media_file.stem}-subs-merged", key='merged_video_out_file')
         submitted = st.button("Merge", key='merged_video_export_btn')
         if submitted:
             try:
                 subs = st.session_state['transcribed_subs']
-                exported_file_path = tools.merge_subs_with_video({subs_lang: subs}, str(media_file.resolve()), exported_video_filename)
+                # subs should now be an SSAFile object thanks to our improved legacy compatibility
+                exported_file_path = tools.merge_subs_with_video({subs_lang: subs}, str(merge_media_file.resolve()), exported_video_filename)
                 st.success(f'Exported file to {exported_file_path}', icon="✅")
                 with open(exported_file_path, 'rb') as f:
-                    st.download_button('Download', f, file_name=f"{exported_video_filename}{media_file.suffix}")
+                    st.download_button('Download', f, file_name=f"{exported_video_filename}{merge_media_file.suffix}")
             except Exception as e:
                 st.error("Something went wrong!")
                 st.error("See the terminal for more info!")
                 print(e)
 
     with st.expander('Export configs file'):
-        export_filename = st.text_input('Filename', value=f"{stt_model_name}_configs.json".replace('/', '-'))
-        configs_dict = _get_config_from_session_state(stt_model_name, config_schema, notification_placeholder)
+        # Since we're using a hardcoded model, we'll use a fixed model name
+        model_name = 'openai-whisper'
+        export_filename = st.text_input('Filename', value=f"{model_name}_configs.json".replace('/', '-'))
+        # For simplified config export, we'll provide basic config
+        configs_dict = {
+            'model': 'openai/whisper',
+            'source_language': source_language,
+            'target_languages': target_languages,
+            'output_formats': output_formats,
+            'device': device_preference
+        }
         st.download_button('Download', data=json.dumps(configs_dict), file_name=export_filename, mime='json')
 
 def run():

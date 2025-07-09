@@ -187,7 +187,12 @@ def render_batch_processing_with_auth(user):
     """
     # Initialize batch processor in session state with user context
     if 'batch_processor' not in st.session_state:
-        st.session_state.batch_processor = BatchProcessor(user_id=user.id if user else None)
+        # Get device preference from session state or use auto
+        device_preference = st.session_state.get('batch_device_preference', 'auto')
+        st.session_state.batch_processor = BatchProcessor(
+            user_id=user.id if user else None,
+            preferred_device=device_preference
+        )
     
     render_batch_processing_ui(st.session_state.batch_processor, subs_ai, user)
 
@@ -221,6 +226,51 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
         
         # Bulk configuration options
         st.write("**Bulk Configuration (applies to all files)**")
+        
+        # Device configuration section
+        with st.expander("⚙️ Processing Configuration", expanded=False):
+            from subsai.utils import get_available_devices, is_cuda_available
+            
+            col_device1, col_device2 = st.columns(2)
+            
+            with col_device1:
+                available_devices = get_available_devices()
+                device_options = ['auto'] + available_devices
+                
+                current_device = st.session_state.get('batch_device_preference', 'auto')
+                device_preference = st.selectbox(
+                    "Processing Device",
+                    options=device_options,
+                    index=device_options.index(current_device) if current_device in device_options else 0,
+                    help="Choose processing device: 'auto' for optimal selection, 'cpu' for CPU-only, or specific CUDA device"
+                )
+                
+                if device_preference != st.session_state.get('batch_device_preference', 'auto'):
+                    st.session_state.batch_device_preference = device_preference
+                    # Reinitialize batch processor with new device preference
+                    if 'batch_processor' in st.session_state:
+                        del st.session_state.batch_processor
+                    st.rerun()
+            
+            with col_device2:
+                # Show device status
+                cuda_available = is_cuda_available()
+                if cuda_available:
+                    st.success("✅ CUDA GPU Available")
+                    import torch
+                    if torch.cuda.is_available():
+                        gpu_count = torch.cuda.device_count()
+                        st.info(f"🔧 {gpu_count} GPU(s) detected")
+                else:
+                    st.warning("⚠️ CUDA not available - using CPU")
+                    
+                # Show current device selection
+                if device_preference == 'auto':
+                    optimal_device = 'cuda:0' if cuda_available else 'cpu'
+                    st.info(f"🎯 Auto-selected: {optimal_device}")
+                else:
+                    st.info(f"🎯 Selected: {device_preference}")
+        
         col1, col2, col3 = st.columns(3)
         
         with col1:

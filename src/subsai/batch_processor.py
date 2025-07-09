@@ -17,6 +17,7 @@ import logging
 from subsai import SubsAI, Tools
 from .analytics import AnalyticsService
 from .utils.file_manager import cleanup_batch_output_dir
+from .utils import get_optimal_device, is_cuda_available
 
 
 class JobStatus(Enum):
@@ -133,7 +134,7 @@ class ProgressTracker:
 class BatchProcessor:
     """Main batch processing orchestrator"""
     
-    def __init__(self, progress_callback: Optional[Callable] = None, user_id: Optional[int] = None):
+    def __init__(self, progress_callback: Optional[Callable] = None, user_id: Optional[int] = None, preferred_device: str = 'auto'):
         self.progress_tracker = ProgressTracker()
         self.progress_callback = progress_callback
         self.subs_ai = SubsAI()
@@ -143,12 +144,68 @@ class BatchProcessor:
         self._processing_thread = None
         self._current_job_id = None
         self.user_id = user_id
+        self.preferred_device = preferred_device
         
         # Setup logging
         self.logger = logging.getLogger(__name__)
         
         # Initialize analytics service
         self.analytics = AnalyticsService()
+        
+        # Log device capabilities
+        self._log_device_info()
+    
+    def _log_device_info(self):
+        """Log available device information for debugging"""
+        cuda_available = is_cuda_available()
+        optimal_device = get_optimal_device()
+        
+        self.logger.info(f"Device capabilities - CUDA available: {cuda_available}, Optimal device: {optimal_device}")
+        if cuda_available:
+            try:
+                import torch
+                gpu_count = torch.cuda.device_count()
+                self.logger.info(f"Found {gpu_count} CUDA device(s)")
+                for i in range(gpu_count):
+                    gpu_name = torch.cuda.get_device_name(i)
+                    self.logger.info(f"  GPU {i}: {gpu_name}")
+            except Exception as e:
+                self.logger.warning(f"Error getting GPU info: {e}")
+    
+    def _get_model_device_config(self, model_type: str) -> dict:
+        """Get device configuration for model based on availability and preferences"""
+        device_config = {}
+        
+        if self.preferred_device == 'auto':
+            device = get_optimal_device()
+        elif self.preferred_device == 'cpu':
+            device = 'cpu'
+        elif self.preferred_device.startswith('cuda'):
+            if is_cuda_available():
+                device = self.preferred_device
+            else:
+                self.logger.warning(f"Requested CUDA device {self.preferred_device} not available, falling back to CPU")
+                device = 'cpu'
+        else:
+            device = get_optimal_device()
+        
+        # Configure based on model type
+        if model_type == 'openai/whisper':
+            # OpenAI Whisper uses PyTorch device strings
+            device_config['device'] = device
+        elif model_type == 'guillaumekln/faster-whisper':
+            # Faster Whisper has different device configuration
+            if device.startswith('cuda'):
+                device_config['device'] = 'cuda'
+                device_config['device_index'] = int(device.split(':')[1]) if ':' in device else 0
+            else:
+                device_config['device'] = 'cpu'
+        elif model_type in ['whisperX', 'stable-ts']:
+            # These models also use PyTorch device strings
+            device_config['device'] = device
+        
+        self.logger.info(f"Using device configuration for {model_type}: {device_config}")
+        return device_config
         
     def add_job(self, file_path: str, file_name: str, file_size: int, **config_options) -> str:
         """Add a new job to the batch processing queue"""
@@ -270,21 +327,88 @@ class BatchProcessor:
         start_time = time.time()
         
         try:
-            # Create model
+            # Create model with device handling
+            model_type = 'openai/whisper'  # Default model
             model_config = {
                 'source_language': job.source_language,
                 'target_language': 'transcribe'  # Always transcribe first, then translate if needed
             }
-            model = self.subs_ai.create_model('openai/whisper', model_config)
+            
+            # Add device configuration
+            device_config = self._get_model_device_config(model_type)
+            model_config.update(device_config)
+            
+            self.logger.info(f"Creating model {model_type} with config: {model_config}")
+            
+            try:
+                model = self.subs_ai.create_model(model_type, model_config)
+            except Exception as model_error:
+                # Handle GPU-specific errors and fallback to CPU
+                error_msg = str(model_error).lower()
+                if any(gpu_error in error_msg for gpu_error in ['cuda', 'gpu', 'device']):
+                    self.logger.warning(f"GPU model creation failed: {model_error}. Falling back to CPU...")
+                    
+                    # Update progress to inform user about fallback
+                    self.progress_tracker.update_job_progress(
+                        job.file_id,
+                        0.05,
+                        current_task="GPU unavailable, using CPU mode..."
+                    )
+                    
+                    # Recreate model with CPU configuration
+                    cpu_config = model_config.copy()
+                    cpu_config['device'] = 'cpu'
+                    if 'device_index' in cpu_config:
+                        del cpu_config['device_index']
+                    
+                    self.logger.info(f"Retrying with CPU config: {cpu_config}")
+                    model = self.subs_ai.create_model(model_type, cpu_config)
+                else:
+                    raise model_error
             
             # Transcribe the audio
+            device_info = f"using {device_config.get('device', 'auto')} device"
             self.progress_tracker.update_job_progress(
                 job.file_id,
                 0.1,
-                current_task=f"Transcribing audio ({job.source_language})..."
+                current_task=f"Transcribing audio ({job.source_language}) {device_info}..."
             )
             
-            base_subs = self.subs_ai.transcribe(job.file_path, model)
+            try:
+                base_subs = self.subs_ai.transcribe(job.file_path, model)
+            except Exception as transcribe_error:
+                # Handle transcription errors, particularly GPU-related ones
+                error_msg = str(transcribe_error).lower()
+                if any(gpu_error in error_msg for gpu_error in ['cuda', 'gpu', 'device', 'memory']):
+                    self.logger.warning(f"GPU transcription failed: {transcribe_error}. Attempting CPU fallback...")
+                    
+                    # Update progress
+                    self.progress_tracker.update_job_progress(
+                        job.file_id,
+                        0.08,
+                        current_task="GPU error detected, retrying with CPU..."
+                    )
+                    
+                    # Recreate model with CPU-only configuration
+                    cpu_config = {
+                        'source_language': job.source_language,
+                        'target_language': 'transcribe',
+                        'device': 'cpu'
+                    }
+                    
+                    self.logger.info(f"Creating CPU-only model with config: {cpu_config}")
+                    model = self.subs_ai.create_model(model_type, cpu_config)
+                    
+                    # Retry transcription
+                    self.progress_tracker.update_job_progress(
+                        job.file_id,
+                        0.1,
+                        current_task=f"Transcribing audio ({job.source_language}) using CPU..."
+                    )
+                    
+                    base_subs = self.subs_ai.transcribe(job.file_path, model)
+                else:
+                    raise transcribe_error
             
             # Process each target language
             total_tasks = len(job.target_languages) * len(job.output_formats)

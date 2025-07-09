@@ -27,10 +27,35 @@ def _load_config(config_name, model_config, config_schema):
 def get_available_devices() -> list:
     """
     Get available devices (cpu and gpus)
+    Only returns CUDA devices that are actually available
 
     :return: list of available devices
     """
-    return ['cpu', *[f'cuda:{i}' for i in range(torch.cuda.device_count())]]
+    devices = ['cpu']
+    if torch.cuda.is_available():
+        devices.extend([f'cuda:{i}' for i in range(torch.cuda.device_count())])
+    return devices
+
+
+def get_optimal_device() -> str:
+    """
+    Get the optimal device for processing
+    Returns 'cuda:0' if CUDA is available, otherwise 'cpu'
+
+    :return: optimal device string
+    """
+    if torch.cuda.is_available() and torch.cuda.device_count() > 0:
+        return 'cuda:0'
+    return 'cpu'
+
+
+def is_cuda_available() -> bool:
+    """
+    Check if CUDA is available and accessible
+
+    :return: True if CUDA is available, False otherwise
+    """
+    return torch.cuda.is_available() and torch.cuda.device_count() > 0
 
 
 def available_translation_models() -> list:

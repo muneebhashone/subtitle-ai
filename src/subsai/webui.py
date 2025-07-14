@@ -697,7 +697,7 @@ def _transcribe(file_path, model_name, model_config):
 
 
 def _process_single_file_with_batch_flow(file_path, filename, file_size, source_language, target_languages, output_formats, 
-                                        device_preference, enable_download, save_local, save_s3, s3_project, 
+                                        device_preference, translation_model, enable_download, save_local, save_s3, s3_project, 
                                         progress_placeholder, results_placeholder, user):
     """
     Process single file using batch processing workflow
@@ -709,6 +709,7 @@ def _process_single_file_with_batch_flow(file_path, filename, file_size, source_
     :param target_languages: list of target languages
     :param output_formats: list of output formats
     :param device_preference: preferred device for processing
+    :param translation_model: translation model to use for translation
     :param enable_download: whether to enable download buttons
     :param save_local: whether to save files locally
     :param save_s3: whether to save to S3
@@ -1335,6 +1336,7 @@ def render_single_file_processing(user):
                 target_languages=target_languages,
                 output_formats=output_formats,
                 device_preference=device_preference,
+                translation_model=translation_model,
                 enable_download=enable_download,
                 save_local=save_local,
                 save_s3=save_s3,
@@ -1354,6 +1356,7 @@ def render_single_file_processing(user):
                     target_languages=target_languages,
                     output_formats=output_formats,
                     device_preference=device_preference,
+                    translation_model=translation_model,
                     enable_download=enable_download,
                     save_local=save_local,
                     save_s3=save_s3,

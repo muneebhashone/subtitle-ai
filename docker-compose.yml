@@ -12,6 +12,9 @@ services:
       - "host.docker.internal:host-gateway"
     env_file:
       - .env
+    environment:
+      - SUBSAI_DB_PATH=/subsai/data/subsai_auth.db
+      - DOCKER_ENV=true
     volumes:
       - ./data:/subsai/data
     deploy:

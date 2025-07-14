@@ -20,6 +20,9 @@ COPY ./assets ./assets
 
 RUN pip install .
 
+# Create data directory for SQLite database persistence
+RUN mkdir -p /subsai/data && chmod 755 /subsai/data
+
 EXPOSE 8501
 
 ENTRYPOINT ["python", "src/subsai/webui.py", "--server.fileWatcherType", "none", "--browser.gatherUsageStats", "false"]

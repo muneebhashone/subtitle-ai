@@ -294,6 +294,22 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                 default=['srt', 'ooona']
             )
         
+        # Translation model selection for bulk processing
+        from subsai.utils import available_translation_models
+        
+        try:
+            translation_models = available_translation_models()
+        except Exception as e:
+            st.error(f"Error loading translation models: {e}")
+            translation_models = ["deepseek-r1:1.5b"]
+        
+        bulk_translation_model = st.selectbox(
+            "Default translation model",
+            options=translation_models,
+            index=0,  # DeepSeek R1 is always first
+            help="AI model to use for translation (only used when translating to different languages)"
+        )
+        
         use_bulk_config = st.checkbox("Use bulk configuration for all files", value=True)
         
         # S3 Upload Option for Batch Processing
@@ -402,11 +418,13 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                             job_target_languages = bulk_target_languages
                             job_formats = bulk_formats
                             job_source_language = bulk_source_language
+                            job_translation_model = bulk_translation_model
                         else:
                             file_id = f"file-{i}-{file_info['name']}"
                             job_source_language = st.session_state.get(f"source-lang-{file_id}", 'auto')
                             job_target_languages = st.session_state.get(f"target-lang-{file_id}", ['transcribe'])
                             job_formats = st.session_state.get(f"format-{file_id}", ['srt'])
+                            job_translation_model = bulk_translation_model  # Use bulk model for individual files too for now
                         
                         # Prepare export options for S3
                         export_options = {}
@@ -423,7 +441,8 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                             source_language=job_source_language,
                             target_languages=job_target_languages,
                             output_formats=job_formats,
-                            export_options=export_options
+                            export_options=export_options,
+                            translation_model=job_translation_model
                         )
                     
                     batch_processor.start_processing()
@@ -815,7 +834,7 @@ def _process_single_file_with_batch_flow(file_path, filename, file_size, source_
                     subs=base_subs,
                     source_language=source_language if source_language != 'auto' else 'auto',
                     target_language=target_language,
-                    model='deepseek-r1:1.5b'
+                    model=translation_model
                 )
                 lang_suffix = target_language
             
@@ -1199,6 +1218,26 @@ def render_single_file_processing(user):
                 default=['transcribe'],
                 help="Languages to transcribe/translate to ('transcribe' = same as source)"
             )
+
+    # Translation Model Configuration
+    with st.expander("🔄 Translation Configuration", expanded=False):
+        from subsai.utils import available_translation_models
+        
+        try:
+            translation_models = available_translation_models()
+        except Exception as e:
+            st.error(f"Error loading translation models: {e}")
+            translation_models = ["deepseek-r1:1.5b"]
+        
+        translation_model = st.selectbox(
+            "Translation model",
+            options=translation_models,
+            index=0,  # DeepSeek R1 is always first
+            help="AI model to use for translation (only used when translating to different languages)"
+        )
+        
+        if translation_model != "deepseek-r1:1.5b":
+            st.info(f"Using {translation_model} for translation")
 
     # Output Configuration
     with st.expander("📄 Output Configuration", expanded=True):

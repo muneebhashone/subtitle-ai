@@ -58,16 +58,49 @@ def is_cuda_available() -> bool:
     return torch.cuda.is_available() and torch.cuda.device_count() > 0
 
 
+def get_ollama_models() -> list:
+    """
+    Fetches available models from Ollama service
+    
+    :return: list of available Ollama model names
+    """
+    try:
+        import ollama
+        import os
+        
+        # Configure Ollama client for Docker environment
+        if os.getenv('DOCKER_ENV', 'false').lower() == 'true':
+            client = ollama.Client(host="http://host.docker.internal:11434")
+        else:
+            client = ollama.Client()
+        
+        # Get list of models
+        models_response = client.list()
+        model_names = [model['name'] for model in models_response.get('models', [])]
+        return model_names
+        
+    except Exception as e:
+        # If Ollama is not available, return empty list
+        print(f"Warning: Could not fetch Ollama models: {e}")
+        return []
+
+
 def available_translation_models() -> list:
     """
     Returns available translation models
-    Features DeepSeek-R1 as the primary translation model with fallback options
+    Features DeepSeek-R1 as the primary translation model with dynamically fetched Ollama models
 
     :return: list of available models
     """
-    models = [
-        "deepseek-r1:1.5b",
-    ]
+    # Start with DeepSeek-R1 as default
+    models = ["deepseek-r1:1.5b"]
+    
+    # Add other available Ollama models
+    ollama_models = get_ollama_models()
+    for model in ollama_models:
+        if model not in models:  # Avoid duplicates
+            models.append(model)
+    
     return models
 
 

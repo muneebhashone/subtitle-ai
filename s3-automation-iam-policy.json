@@ -1,0 +1,41 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "STSPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "S3BucketPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "s3:HeadBucket",
+        "s3:PutBucketNotification",
+        "s3:GetBucketNotification"
+      ],
+      "Resource": [
+        "arn:aws:s3:::aidevlondon",
+        "arn:aws:s3:::${aws:userid}/*"
+      ]
+    },
+    {
+      "Sid": "SNSTopicPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "sns:CreateTopic",
+        "sns:SetTopicAttributes",
+        "sns:GetTopicAttributes",
+        "sns:Subscribe",
+        "sns:SetSubscriptionAttributes"
+      ],
+      "Resource": [
+        "arn:aws:sns:*:*:s3-file-upload-notifications",
+        "arn:aws:sns:*:*:s3-file-upload-notifications:*"
+      ]
+    }
+  ]
+}

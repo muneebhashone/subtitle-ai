@@ -25,3 +25,4 @@ dependencies = {file = ["requirements.txt"]}
 [project.scripts]
 subsai = 'subsai.cli:main'
 subsai-webui = 'subsai.webui:run'
+subsai-webhook = 'subsai.webhook_server:run_webhook_server'

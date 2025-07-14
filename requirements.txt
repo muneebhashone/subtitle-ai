@@ -21,3 +21,6 @@ boto3==1.38.39
 ollama
 bcrypt==4.1.2
 plotly>=5.0.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0

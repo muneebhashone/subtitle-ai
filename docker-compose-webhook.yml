@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  # Existing Streamlit Web UI
+  subsai-webui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ./data:/app/data
+      - /tmp:/tmp
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - subsai-network
+
+  # New FastAPI Webhook Server
+  subsai-webhook:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      # AWS S3 Configuration
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-eu-west-2}
+      - WEBHOOK_S3_BUCKET=${WEBHOOK_S3_BUCKET:-aidevlondon}
+      # OOONA API Configuration
+      - OOONA_API_BASE_URL=${OOONA_API_BASE_URL}
+      - OOONA_CLIENT_ID=${OOONA_CLIENT_ID}
+      - OOONA_CLIENT_SECRET=${OOONA_CLIENT_SECRET}
+    volumes:
+      - ./data:/app/data
+      - /tmp:/tmp
+    command: ["python", "-m", "subsai.webhook_server"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - subsai-network
+    depends_on:
+      - subsai-webui
+
+  # CPU-only version of webhook server (alternative)
+  subsai-webhook-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8000"
+    environment:
+      # AWS S3 Configuration
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-eu-west-2}
+      - WEBHOOK_S3_BUCKET=${WEBHOOK_S3_BUCKET:-aidevlondon}
+      # OOONA API Configuration
+      - OOONA_API_BASE_URL=${OOONA_API_BASE_URL}
+      - OOONA_CLIENT_ID=${OOONA_CLIENT_ID}
+      - OOONA_CLIENT_SECRET=${OOONA_CLIENT_SECRET}
+    volumes:
+      - ./data:/app/data
+      - /tmp:/tmp
+    command: ["python", "-m", "subsai.webhook_server"]
+    restart: unless-stopped
+    networks:
+      - subsai-network
+    profiles:
+      - cpu-only
+
+networks:
+  subsai-network:
+    driver: bridge

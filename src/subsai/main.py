@@ -94,6 +94,18 @@ class OllamaTranslationModel:
             )
             raw_response = response['message']['content']
             cleaned_response = self._clean_deepseek_response(raw_response)
+            
+            # Clear CUDA memory after translation to prevent device-side assert errors
+            try:
+                import torch
+                import gc
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    gc.collect()
+            except ImportError:
+                pass  # torch not available, skip CUDA cleanup
+            
             return cleaned_response
         except Exception as e:
             raise Exception(f"Failed to translate with Ollama on {self.ollama_host}: {e}")

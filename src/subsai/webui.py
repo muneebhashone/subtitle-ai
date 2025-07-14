@@ -666,13 +666,11 @@ def _media_file_base64(file_path, mime='video/mp4', start_time=0):
 
     return [{"type": mime, "src": f"data:{mime};base64,{data}#t={start_time}"}]
 
-@st.cache_resource
 def _create_translation_model(model_name: str):
     """
-    Returns a translation model and caches it
+    Returns a translation model (no caching to avoid CUDA memory issues)
 
     :param model_name: name of the model
-    :param model_config: configs
 
     :return: translation model
     """
@@ -831,12 +829,51 @@ def _process_single_file_with_batch_flow(file_path, filename, file_size, source_
                 # Translate to target language
                 progress_placeholder.info(f"🌐 Translating to {target_language}...")
                 
-                current_subs = tools.translate(
-                    subs=base_subs,
-                    source_language=source_language if source_language != 'auto' else 'auto',
-                    target_language=target_language,
-                    model=translation_model
-                )
+                try:
+                    current_subs = tools.translate(
+                        subs=base_subs,
+                        source_language=source_language if source_language != 'auto' else 'auto',
+                        target_language=target_language,
+                        model=translation_model
+                    )
+                except Exception as translation_error:
+                    # Handle CUDA errors specifically
+                    error_msg = str(translation_error).lower()
+                    if any(cuda_error in error_msg for cuda_error in ['cuda', 'device-side assert', 'gpu']):
+                        progress_placeholder.warning(f"⚠️ CUDA translation error, clearing memory and retrying...")
+                        
+                        # Force clear CUDA memory
+                        try:
+                            import torch
+                            import gc
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                                torch.cuda.synchronize()
+                                gc.collect()
+                        except ImportError:
+                            pass
+                        
+                        # Retry translation
+                        current_subs = tools.translate(
+                            subs=base_subs,
+                            source_language=source_language if source_language != 'auto' else 'auto',
+                            target_language=target_language,
+                            model=translation_model
+                        )
+                    else:
+                        raise translation_error
+                
+                # Clear CUDA memory after translation to prevent device-side assert errors
+                try:
+                    import torch
+                    import gc
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                        torch.cuda.synchronize()
+                        gc.collect()
+                except ImportError:
+                    pass  # torch not available, skip CUDA cleanup
+                
                 lang_suffix = target_language
             
             # Generate files in each requested format

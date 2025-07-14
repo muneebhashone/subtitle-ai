@@ -8,7 +8,7 @@ import json
 import logging
 from typing import Optional, List, Dict, Any, Tuple
 from contextlib import contextmanager
-from ..auth.models import AnalyticsEvent, FileAnalytics, UsageMetrics
+from ..auth.models import AnalyticsEvent, FileAnalytics, UsageMetrics, DatabaseSchema
 
 
 class AnalyticsDatabase:
@@ -23,6 +23,7 @@ class AnalyticsDatabase:
         """
         self.db_path = db_path
         self.logger = logging.getLogger(__name__)
+        self._ensure_analytics_tables()
     
     @contextmanager
     def get_connection(self):
@@ -39,6 +40,46 @@ class AnalyticsDatabase:
         finally:
             if conn:
                 conn.close()
+    
+    def _ensure_analytics_tables(self):
+        """
+        Ensure analytics tables exist in the database
+        Creates analytics_events, file_analytics, and usage_metrics tables if they don't exist
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get all table creation SQL from the schema
+                all_table_sql = DatabaseSchema.get_create_tables_sql()
+                
+                # Filter to only analytics-related tables
+                analytics_table_keywords = ['analytics_events', 'file_analytics', 'usage_metrics']
+                analytics_sql = []
+                
+                for sql in all_table_sql:
+                    # Check if this SQL creates an analytics table
+                    for keyword in analytics_table_keywords:
+                        if keyword in sql:
+                            analytics_sql.append(sql)
+                            break
+                
+                # Create analytics tables
+                for sql in analytics_sql:
+                    cursor.execute(sql)
+                
+                # Create indexes for analytics tables (filter from all SQL)
+                index_sql = [sql for sql in all_table_sql if 'CREATE INDEX' in sql and any(keyword in sql for keyword in analytics_table_keywords)]
+                for sql in index_sql:
+                    cursor.execute(sql)
+                
+                conn.commit()
+                self.logger.info(f"Analytics tables ensured in database at {self.db_path}")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to ensure analytics tables: {e}")
+            # Don't raise the exception - allow the app to continue even if table creation fails
+            # This provides graceful degradation if there are permission issues
     
     # Analytics Events
     def create_event(self, event: AnalyticsEvent) -> Optional[int]:

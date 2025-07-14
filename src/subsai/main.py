@@ -30,7 +30,7 @@ import ollama
 from subsai.configs import AVAILABLE_MODELS
 from subsai.models.abstract_model import AbstractModel
 from ffsubsync.ffsubsync import run, make_parser
-from subsai.utils import available_translation_models
+from subsai.utils import available_translation_models, get_ollama_models
 
 __author__ = "abdeladim-s"
 __contact__ = "https://github.com/abdeladim-s"
@@ -291,8 +291,9 @@ class Tools:
         :param model_family: Either "mbart50" or "m2m100". By default, See `dl-translate` docs
         :return: A translation model instance (either dl_translate or Ollama)
         """
-        # Check if this is a DeepSeek model that should use Ollama
-        if model_name.startswith("deepseek") or model_name.startswith("ollama:"):
+        # Check if this is an Ollama model
+        ollama_models = get_ollama_models()
+        if model_name in ollama_models or model_name.startswith("ollama:"):
             return OllamaTranslationModel(model_name)
         else:
             # Use dl_translate for traditional models

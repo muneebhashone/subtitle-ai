@@ -93,7 +93,7 @@ def available_translation_models() -> list:
     :return: list of available models
     """
     # Start with default translation models
-    models = ["deepseek-r1:1.5b", "mistral-nemo:latest"]
+    models = ["deepseek-r1:1.5b", "mistral-nemo:latest", "qwen2.5:7b"]
     
     # Add other available Ollama models
     ollama_models = get_ollama_models()

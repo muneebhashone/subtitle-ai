@@ -50,8 +50,6 @@ class OllamaTranslationModel:
         
         :param model_name: Name of the Ollama model to use
         """
-        self.model_name = model_name
-        
         # Configure Ollama client for Docker environment
         import os
         if os.getenv('DOCKER_ENV', 'false').lower() == 'true':
@@ -62,11 +60,39 @@ class OllamaTranslationModel:
             self.ollama_host = "http://localhost:11434"
             self.client = ollama.Client()
         
+        # Resolve the actual model name with tag if needed
+        self.model_name = self._resolve_model_name(model_name)
+        
         # Test if Ollama is available and model exists
         try:
-            self.client.show(model_name)
+            self.client.show(self.model_name)
         except Exception as e:
-            raise Exception(f"Ollama model '{model_name}' not found on {self.ollama_host}. Please run 'ollama pull {model_name}' first. Error: {e}")
+            raise Exception(f"Ollama model '{self.model_name}' not found on {self.ollama_host}. Please run 'ollama pull {self.model_name}' first. Error: {e}")
+    
+    def _resolve_model_name(self, model_name: str) -> str:
+        """
+        Resolve model name to match available Ollama models.
+        If model_name doesn't have a tag, try to find a matching model with a tag.
+        """
+        try:
+            from subsai.utils import get_ollama_models
+            available_models = get_ollama_models()
+            
+            # If exact match exists, use it
+            if model_name in available_models:
+                return model_name
+            
+            # If model_name doesn't have a tag, look for models that start with model_name:
+            if ":" not in model_name:
+                for available_model in available_models:
+                    if available_model.startswith(model_name + ":"):
+                        return available_model
+            
+            # Return original name if no match found
+            return model_name
+        except Exception:
+            # If we can't get available models, return original name
+            return model_name
     
     def translate(self, text: str, source: str, target: str, **kwargs) -> str:
         """
@@ -305,7 +331,16 @@ class Tools:
         """
         # Check if this is an Ollama model
         ollama_models = get_ollama_models()
-        if model_name in ollama_models or model_name.startswith("ollama:"):
+        
+        # Check for exact match or partial match for models with tags
+        is_ollama_model = (
+            model_name in ollama_models or 
+            model_name.startswith("ollama:") or
+            any(ollama_model.startswith(model_name + ":") for ollama_model in ollama_models) or
+            any(model_name.startswith(ollama_model.split(":")[0]) for ollama_model in ollama_models)
+        )
+        
+        if is_ollama_model:
             return OllamaTranslationModel(model_name)
         else:
             # Use dl_translate for traditional models

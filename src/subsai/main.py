@@ -332,12 +332,17 @@ class Tools:
         # Check if this is an Ollama model
         ollama_models = get_ollama_models()
         
+        # Default Ollama models that should always be routed to OllamaTranslationModel
+        default_ollama_models = ["deepseek-r1:1.5b", "mistral-nemo:latest", "qwen2.5:7b"]
+        
         # Check for exact match or partial match for models with tags
         is_ollama_model = (
             model_name in ollama_models or 
+            model_name in default_ollama_models or
             model_name.startswith("ollama:") or
             any(ollama_model.startswith(model_name + ":") for ollama_model in ollama_models) or
-            any(model_name.startswith(ollama_model.split(":")[0]) for ollama_model in ollama_models)
+            any(model_name.startswith(ollama_model.split(":")[0]) for ollama_model in ollama_models) or
+            any(model_name.startswith(default_model.split(":")[0]) for default_model in default_ollama_models)
         )
         
         if is_ollama_model:

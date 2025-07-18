@@ -110,7 +110,7 @@ class OllamaTranslationModel:
                 messages=[
                     {
                         'role': 'system',
-                        'content': f'You are a professional translator. Translate the following text from {source} to {target}. Return only the translation, no explanations or additional text.'
+                        'content': f'You are a professional translator specializing in subtitle translation. Translate the following text from {source} to {target}. STRICT REQUIREMENTS: 1) Return ONLY the exact translation in {target} language 2) NO random characters, symbols, or unrelated words 3) NO explanations, comments, or additional text 4) Maintain the original meaning and context 5) Ensure the output is grammatically correct and natural in {target} 6) If unsure about a word, use the closest accurate translation rather than random text.'
                     },
                     {
                         'role': 'user',

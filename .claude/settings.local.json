@@ -13,7 +13,8 @@
       "Bash(cp:*)",
       "Bash(ls:*)",
       "Bash(docker compose:*)",
-      "WebFetch(domain:api-docs.deepseek.com)"
+      "WebFetch(domain:api-docs.deepseek.com)",
+      "Bash(python -m pytest tests/ -v)"
     ],
     "deny": []
   }

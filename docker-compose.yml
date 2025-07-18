@@ -11,11 +11,63 @@ services:
       - .env
     environment:
       - SUBSAI_DB_PATH=/subsai/data/subsai_auth.db
+      - PYTHONUNBUFFERED=1
+      - STREAMLIT_SERVER_ENABLE_CORS=false
+      - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
+      - NVIDIA_VISIBLE_DEVICES=0
+      - CUDA_VISIBLE_DEVICES=0
     volumes:
       - ./data:/subsai/data
+      - /tmp:/tmp
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
     deploy:
       resources:
+        limits:
+          memory: 20g
+          cpus: '6.0'
         reservations:
+          memory: 4g
           devices:
             - driver: nvidia
+              device_ids: ['0']
               capabilities: [gpu]
+
+  # CPU-only service for environments without GPU
+  subsai-webui-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8502:8501"
+    env_file:
+      - .env
+    environment:
+      - SUBSAI_DB_PATH=/subsai/data/subsai_auth.db
+      - PYTHONUNBUFFERED=1
+      - STREAMLIT_SERVER_ENABLE_CORS=false
+      - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
+    volumes:
+      - ./data:/subsai/data
+      - /tmp:/tmp
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 16g
+          cpus: '7.0'
+        reservations:
+          memory: 2g
+    profiles:
+      - cpu-only

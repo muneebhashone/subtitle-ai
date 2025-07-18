@@ -400,21 +400,37 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                 default=['srt', 'ooona']
             )
         
-        # Translation model selection for bulk processing
-        from subsai.utils import available_translation_models
+        # Model selection for bulk processing
+        col1, col2 = st.columns(2)
         
-        try:
-            translation_models = available_translation_models()
-        except Exception as e:
-            st.error(f"Error loading translation models: {e}")
-            translation_models = ["deepseek-r1:1.5b"]
+        with col1:
+            # Transcription model selection
+            available_models = subs_ai.available_models()
+            whisper_models = [model for model in available_models if 'whisper' in model.lower()]
+            
+            bulk_transcription_model = st.selectbox(
+                "Default transcription model",
+                options=whisper_models,
+                index=0,  # Default to first Whisper model
+                help="AI model to use for speech-to-text transcription"
+            )
         
-        bulk_translation_model = st.selectbox(
-            "Default translation model",
-            options=translation_models,
-            index=0,  # DeepSeek R1 is always first
-            help="AI model to use for translation (only used when translating to different languages)"
-        )
+        with col2:
+            # Translation model selection for bulk processing
+            from subsai.utils import available_translation_models
+            
+            try:
+                translation_models = available_translation_models()
+            except Exception as e:
+                st.error(f"Error loading translation models: {e}")
+                translation_models = ["deepseek-r1:1.5b"]
+            
+            bulk_translation_model = st.selectbox(
+                "Default translation model",
+                options=translation_models,
+                index=0,  # DeepSeek R1 is always first
+                help="AI model to use for translation (only used when translating to different languages)"
+            )
         
         use_bulk_config = st.checkbox("Use bulk configuration for all files", value=True)
         
@@ -548,7 +564,8 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                             target_languages=job_target_languages,
                             output_formats=job_formats,
                             export_options=export_options,
-                            translation_model=job_translation_model
+                            translation_model=job_translation_model,
+                            transcription_model=bulk_transcription_model
                         )
                     
                     batch_processor.start_processing()
@@ -801,7 +818,7 @@ def _transcribe(file_path, model_name, model_config):
 
 
 def _process_single_file_with_batch_flow(file_path, filename, file_size, source_language, target_languages, output_formats, 
-                                        device_preference, translation_model, enable_download, save_local, save_s3, s3_project, 
+                                        device_preference, translation_model, transcription_model, model_config, enable_download, save_local, save_s3, s3_project, 
                                         progress_placeholder, results_placeholder, user):
     """
     Process single file using batch processing workflow
@@ -814,6 +831,8 @@ def _process_single_file_with_batch_flow(file_path, filename, file_size, source_
     :param output_formats: list of output formats
     :param device_preference: preferred device for processing
     :param translation_model: translation model to use for translation
+    :param transcription_model: transcription model to use for speech-to-text
+    :param model_config: configuration for the transcription model
     :param enable_download: whether to enable download buttons
     :param save_local: whether to save files locally
     :param save_s3: whether to save to S3
@@ -836,7 +855,7 @@ def _process_single_file_with_batch_flow(file_path, filename, file_size, source_
             analytics.track_transcription_start(
                 user_id=user.id,
                 filename=filename,
-                model='openai/whisper',
+                model=transcription_model,
                 file_size=file_size,
                 source_language=source_language,
                 target_languages=target_languages,
@@ -867,19 +886,21 @@ def _process_single_file_with_batch_flow(file_path, filename, file_size, source_
             return device_config, device
         
         # Step 2: Create model with device handling
-        model_type = 'openai/whisper'
-        model_config = {
+        model_type = transcription_model
+        # Use the provided model_config and add language settings
+        final_model_config = model_config.copy()
+        final_model_config.update({
             'source_language': source_language,
             'target_language': 'transcribe'
-        }
+        })
         
         device_config, selected_device = get_model_device_config(model_type, device_preference)
-        model_config.update(device_config)
+        final_model_config.update(device_config)
         
         progress_placeholder.info(f"🤖 Creating model with device: {selected_device}")
         
         try:
-            model = subs_ai.create_model(model_type, model_config)
+            model = subs_ai.create_model(model_type, final_model_config)
         except Exception as model_error:
             # Handle GPU-specific errors and fallback to CPU
             error_msg = str(model_error).lower()
@@ -887,7 +908,7 @@ def _process_single_file_with_batch_flow(file_path, filename, file_size, source_
                 progress_placeholder.warning(f"⚠️ GPU model creation failed, falling back to CPU...")
                 
                 # Recreate model with CPU configuration
-                cpu_config = model_config.copy()
+                cpu_config = final_model_config.copy()
                 cpu_config['device'] = 'cpu'
                 if 'device_index' in cpu_config:
                     del cpu_config['device_index']
@@ -910,11 +931,10 @@ def _process_single_file_with_batch_flow(file_path, filename, file_size, source_
                 progress_placeholder.warning(f"⚠️ GPU transcription failed, retrying with CPU...")
                 
                 # Recreate model with CPU-only configuration
-                cpu_config = {
-                    'source_language': source_language,
-                    'target_language': 'transcribe',
-                    'device': 'cpu'
-                }
+                cpu_config = final_model_config.copy()
+                cpu_config['device'] = 'cpu'
+                if 'device_index' in cpu_config:
+                    del cpu_config['device_index']
                 
                 model = subs_ai.create_model(model_type, cpu_config)
                 base_subs = subs_ai.transcribe(file_path, model)
@@ -1078,7 +1098,7 @@ def _process_single_file_with_batch_flow(file_path, filename, file_size, source_
             analytics.track_transcription_complete(
                 user_id=user.id,
                 filename=filename,
-                model='openai/whisper',
+                model=transcription_model,
                 processing_time=processing_time,
                 success=True
             )
@@ -1088,7 +1108,7 @@ def _process_single_file_with_batch_flow(file_path, filename, file_size, source_
                 user_id=user.id,
                 filename=filename,
                 file_size=file_size,
-                model_used='openai/whisper',
+                model_used=transcription_model,
                 processing_time=processing_time,
                 success=True,
                 source_language=source_language,
@@ -1124,7 +1144,7 @@ def _process_single_file_with_batch_flow(file_path, filename, file_size, source_
             analytics.track_transcription_complete(
                 user_id=user.id,
                 filename=filename,
-                model='openai/whisper',
+                model=transcription_model,
                 processing_time=processing_time,
                 success=False,
                 error_message=str(e)
@@ -1363,6 +1383,43 @@ def render_single_file_processing(user):
                 help="Languages to transcribe/translate to ('transcribe' = same as source)"
             )
 
+    # Transcription Model Configuration
+    with st.expander("🎙️ Transcription Model Configuration", expanded=True):
+        available_models = subs_ai.available_models()
+        whisper_models = [model for model in available_models if 'whisper' in model.lower()]
+        
+        transcription_model = st.selectbox(
+            "Transcription model",
+            options=whisper_models,
+            index=0,  # Default to first Whisper model
+            help="AI model to use for speech-to-text transcription. Large models provide better accuracy but require more memory."
+        )
+        
+        # Show model information
+        try:
+            model_info = subs_ai.model_info(transcription_model)
+            st.info(f"📋 {model_info['description'][:100]}...")
+        except Exception:
+            pass
+        
+        # Show model-specific configuration if available
+        try:
+            config_schema = subs_ai.config_schema(transcription_model)
+            if 'model_type' in config_schema:
+                model_type_config = config_schema['model_type']
+                if len(model_type_config['options']) > 1:
+                    selected_model_size = st.selectbox(
+                        "Model size",
+                        options=model_type_config['options'],
+                        index=model_type_config['options'].index(model_type_config['default']),
+                        help="Model size affects accuracy and processing speed. Larger models are more accurate but slower."
+                    )
+                else:
+                    selected_model_size = model_type_config['default']
+                    st.info(f"Model size: {selected_model_size}")
+        except Exception:
+            selected_model_size = None
+
     # Translation Model Configuration
     with st.expander("🔄 Translation Configuration", expanded=False):
         from subsai.utils import available_translation_models
@@ -1474,6 +1531,11 @@ def render_single_file_processing(user):
                 st.error("No file uploaded")
                 return
         
+        # Prepare transcription model configuration
+        model_config = {}
+        if 'selected_model_size' in locals() and selected_model_size:
+            model_config['model_type'] = selected_model_size
+        
         # Process the file with the new batch processing workflow
         if file_mode == 'Local path':
             result = _process_single_file_with_batch_flow(
@@ -1485,6 +1547,8 @@ def render_single_file_processing(user):
                 output_formats=output_formats,
                 device_preference=device_preference,
                 translation_model=translation_model,
+                transcription_model=transcription_model,
+                model_config=model_config,
                 enable_download=enable_download,
                 save_local=save_local,
                 save_s3=save_s3,
@@ -1505,6 +1569,8 @@ def render_single_file_processing(user):
                     output_formats=output_formats,
                     device_preference=device_preference,
                     translation_model=translation_model,
+                    transcription_model=transcription_model,
+                    model_config=model_config,
                     enable_download=enable_download,
                     save_local=save_local,
                     save_s3=save_s3,

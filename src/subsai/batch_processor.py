@@ -41,6 +41,7 @@ class JobConfig:
     output_formats: List[str] = field(default_factory=lambda: ['srt'])
     export_options: Dict[str, Any] = field(default_factory=dict)
     translation_model: str = 'deepseek-r1:1.5b'
+    transcription_model: str = 'openai/whisper'
     status: JobStatus = JobStatus.PENDING
     progress: float = 0.0
     current_task: str = ""
@@ -191,7 +192,7 @@ class BatchProcessor:
             device = get_optimal_device()
         
         # Configure based on model type
-        if model_type == 'openai/whisper':
+        if model_type in ['openai/whisper', 'openai/whisper-large-v2', 'openai/whisper-large-v3']:
             # OpenAI Whisper uses PyTorch device strings
             device_config['device'] = device
         elif model_type == 'guillaumekln/faster-whisper':
@@ -222,7 +223,8 @@ class BatchProcessor:
             target_languages=config_options.get('target_languages', ['transcribe']),
             output_formats=config_options.get('output_formats', ['srt']),
             export_options=config_options.get('export_options', {}),
-            translation_model=config_options.get('translation_model', 'deepseek-r1:1.5b')
+            translation_model=config_options.get('translation_model', 'deepseek-r1:1.5b'),
+            transcription_model=config_options.get('transcription_model', 'openai/whisper')
         )
         
         self.progress_tracker.add_job(job_config)
@@ -311,7 +313,7 @@ class BatchProcessor:
             self.analytics.track_transcription_start(
                 user_id=self.user_id,
                 filename=job.file_name,
-                model='openai/whisper',
+                model=job.transcription_model,
                 file_size=job.file_size,
                 source_language=job.source_language,
                 target_languages=job.target_languages,
@@ -330,7 +332,7 @@ class BatchProcessor:
         
         try:
             # Create model with device handling
-            model_type = 'openai/whisper'  # Default model
+            model_type = job.transcription_model
             model_config = {
                 'source_language': job.source_language,
                 'target_language': 'transcribe'  # Always transcribe first, then translate if needed
@@ -471,7 +473,7 @@ class BatchProcessor:
                 self.analytics.track_transcription_complete(
                     user_id=self.user_id,
                     filename=job.file_name,
-                    model='openai/whisper',
+                    model=job.transcription_model,
                     processing_time=processing_time,
                     success=True
                 )
@@ -481,7 +483,7 @@ class BatchProcessor:
                     user_id=self.user_id,
                     filename=job.file_name,
                     file_size=job.file_size,
-                    model_used='openai/whisper',
+                    model_used=job.transcription_model,
                     processing_time=processing_time,
                     success=True,
                     source_language=job.source_language,
@@ -527,7 +529,7 @@ class BatchProcessor:
                 self.analytics.track_transcription_complete(
                     user_id=self.user_id,
                     filename=job.file_name,
-                    model='openai/whisper',
+                    model=job.transcription_model,
                     processing_time=processing_time,
                     success=False,
                     error_message=str(e)
@@ -545,7 +547,7 @@ class BatchProcessor:
                     user_id=self.user_id,
                     filename=job.file_name,
                     file_size=job.file_size,
-                    model_used='openai/whisper',
+                    model_used=job.transcription_model,
                     processing_time=processing_time,
                     success=False,
                     source_language=job.source_language,

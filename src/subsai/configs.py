@@ -26,6 +26,64 @@ AVAILABLE_MODELS = {
                        'as well as speech translation and language identification.',
         'url': 'https://github.com/openai/whisper',
         'config_schema': {
+            'model_type': {
+                'type': list,
+                'description': 'Whisper model size to use',
+                'options': ['tiny', 'tiny.en', 'base', 'base.en', 'small', 'small.en', 'medium', 'medium.en', 'large', 'large-v2', 'large-v3', 'turbo'],
+                'default': 'base'
+            },
+            'source_language': {
+                'type': list,
+                'description': 'Source language of the audio (auto-detect if not specified)',
+                'options': ['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                'default': 'auto'
+            },
+            'target_language': {
+                'type': list,
+                'description': 'Target language for transcription/translation',
+                'options': ['transcribe', 'en'],
+                'default': 'transcribe'
+            }
+        },
+    },
+    'openai/whisper-large-v2': {
+        'class': WhisperModel,
+        'description': 'Whisper Large v2 model (1550M parameters). Improved version of the large model trained for '
+                       '2.5x more epochs with regularization. Recommended over the original large model for better performance.',
+        'url': 'https://github.com/openai/whisper',
+        'config_schema': {
+            'model_type': {
+                'type': list,
+                'description': 'Whisper model size to use',
+                'options': ['large-v2'],
+                'default': 'large-v2'
+            },
+            'source_language': {
+                'type': list,
+                'description': 'Source language of the audio (auto-detect if not specified)',
+                'options': ['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                'default': 'auto'
+            },
+            'target_language': {
+                'type': list,
+                'description': 'Target language for transcription/translation',
+                'options': ['transcribe', 'en'],
+                'default': 'transcribe'
+            }
+        },
+    },
+    'openai/whisper-large-v3': {
+        'class': WhisperModel,
+        'description': 'Whisper Large v3 model (1550M parameters). Latest and most accurate Whisper model with '
+                       '10-20% error reduction compared to Large v2. Trained on 1M hours of weakly labeled audio.',
+        'url': 'https://github.com/openai/whisper',
+        'config_schema': {
+            'model_type': {
+                'type': list,
+                'description': 'Whisper model size to use',
+                'options': ['large-v3'],
+                'default': 'large-v3'
+            },
             'source_language': {
                 'type': list,
                 'description': 'Source language of the audio (auto-detect if not specified)',

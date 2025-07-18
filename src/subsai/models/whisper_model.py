@@ -17,6 +17,12 @@ from subsai.utils import _load_config, get_available_devices
 class WhisperModel(AbstractModel):
     model_name = 'openai/whisper'
     config_schema = {
+        'model_type': {
+            'type': list,
+            'description': 'Whisper model size to use',
+            'options': ['tiny', 'tiny.en', 'base', 'base.en', 'small', 'small.en', 'medium', 'medium.en', 'large', 'large-v2', 'large-v3', 'turbo'],
+            'default': 'base'
+        },
         'source_language': {
             'type': list,
             'description': 'Source language of the audio (auto-detect if not specified)',
@@ -34,15 +40,15 @@ class WhisperModel(AbstractModel):
     def __init__(self, model_config):
         super(WhisperModel, self).__init__(model_config=model_config,
                                            model_name=self.model_name)
-        # Simplified config
+        # Load configuration
+        self.model_type = _load_config('model_type', model_config, self.config_schema)
         self.source_language = _load_config('source_language', model_config, self.config_schema)
         self.target_language = _load_config('target_language', model_config, self.config_schema)
         
-        # Set default model parameters for optimal performance
-        self.model_type = 'base'  # Use base model as default
-        self.device = None  # Auto-detect device
+        # Auto-detect device
+        self.device = None
         
-        # Load the model with optimal settings
+        # Load the model with specified model type
         self.model = whisper.load_model(name=self.model_type, device=self.device)
 
     def transcribe(self, media_file) -> str:

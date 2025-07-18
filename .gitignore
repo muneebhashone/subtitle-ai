@@ -132,3 +132,5 @@ dmypy.json
 _docs
 assets
 .vscode
+
+data/

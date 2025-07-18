@@ -14,6 +14,7 @@ import os.path
 import shutil
 import sys
 import tempfile
+import zipfile
 from base64 import b64encode
 from pathlib import Path
 
@@ -286,6 +287,50 @@ def _config_ui(config_name: str, key: str, config: dict):
         print(f'Warning: {config_name} does not have a supported UI')
         pass
 
+def _create_batch_download_zip(batch_processor: BatchProcessor) -> bytes:
+    """
+    Create a ZIP file containing all results from completed batch jobs.
+    
+    :param batch_processor: The batch processor instance
+    :return: ZIP file content as bytes
+    """
+    import io
+    
+    # Create ZIP file in memory
+    zip_buffer = io.BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        jobs = batch_processor.get_all_jobs()
+        completed_jobs = [job for job in jobs if job.status.value == 'completed' and job.results]
+        
+        if not completed_jobs:
+            # Add empty file to indicate no results
+            zip_file.writestr("no_completed_files.txt", "No completed files found.")
+            return zip_buffer.getvalue()
+        
+        for job in completed_jobs:
+            # Create a folder for each job
+            job_folder = Path(job.file_name).stem  # Use filename without extension as folder name
+            
+            for result in job.results:
+                try:
+                    # Read the file content
+                    if os.path.exists(result['path']):
+                        with open(result['path'], 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        
+                        # Add to ZIP with job folder structure
+                        zip_path = f"{job_folder}/{result['filename']}"
+                        zip_file.writestr(zip_path, content)
+                except Exception as e:
+                    # Add error info if file can't be read
+                    error_content = f"Error reading file {result['filename']}: {str(e)}"
+                    zip_path = f"{job_folder}/ERROR_{result['filename']}.txt"
+                    zip_file.writestr(zip_path, error_content)
+    
+    return zip_buffer.getvalue()
+
+
 @require_auth
 def render_batch_processing_with_auth(user):
     """
@@ -544,7 +589,7 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                         )
         
         # Action buttons
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             if st.button("🚀 Start Batch Processing", type="primary", disabled=batch_processor.is_processing()):
@@ -603,10 +648,48 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                 st.experimental_rerun()
         
         with col3:
+            # Check if there are completed jobs with results
+            jobs = batch_processor.get_all_jobs()
+            completed_jobs_with_results = [job for job in jobs if job.status.value == 'completed' and job.results]
+            
+            if completed_jobs_with_results:
+                # Count total files that will be downloaded
+                total_files = sum(len(job.results) for job in completed_jobs_with_results)
+                
+                try:
+                    zip_content = _create_batch_download_zip(batch_processor)
+                    import datetime
+                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    zip_filename = f"batch_subtitles_{timestamp}.zip"
+                    
+                    st.download_button(
+                        f"📦 Download All ({total_files} files)",
+                        data=zip_content,
+                        file_name=zip_filename,
+                        mime="application/zip",
+                        help=f"Download all {total_files} completed files as a ZIP archive",
+                        disabled=batch_processor.is_processing()
+                    )
+                except Exception as e:
+                    st.error(f"Error creating download: {e}")
+            else:
+                st.button("📦 Download All", disabled=True, help="No completed files to download")
+        
+        with col4:
             if st.button("🗑️ Clear Completed", disabled=batch_processor.is_processing()):
                 batch_processor.clear_completed()
                 st.success("Cleared completed jobs")
                 st.experimental_rerun()
+        
+        # Show download summary if there are completed jobs
+        if completed_jobs_with_results:
+            with st.expander(f"📋 Download Summary ({len(completed_jobs_with_results)} completed jobs)", expanded=False):
+                for job in completed_jobs_with_results:
+                    st.write(f"**{job.file_name}**: {len(job.results)} files")
+                    for result in job.results:
+                        file_size_mb = result['size'] / (1024*1024) if result['size'] > 0 else 0
+                        st.write(f"  - {result['filename']} ({result['format'].upper()}) - {file_size_mb:.1f} MB")
+                st.info("💡 Use the 'Download All' button above to download all files as a ZIP archive before clearing completed jobs.")
 
 
 def render_batch_progress_dashboard(batch_processor: BatchProcessor):

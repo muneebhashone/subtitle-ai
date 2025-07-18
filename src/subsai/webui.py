@@ -377,7 +377,7 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                 else:
                     st.info(f"🎯 Selected: {device_preference}")
         
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             bulk_source_language = st.selectbox(
@@ -387,13 +387,21 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
             )
         
         with col2:
+            bulk_intermediate_language = st.selectbox(
+                "Default bridge language (optional)",
+                options=['none', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                index=0,
+                help="Optional intermediate language for improved translation quality. Leave as 'none' for direct translation."
+            )
+        
+        with col3:
             bulk_target_languages = st.multiselect(
                 "Default target languages",
                 options=['transcribe', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
                 default=['transcribe']
             )
         
-        with col3:
+        with col4:
             bulk_formats = st.multiselect(
                 "Default output formats",
                 options=['srt', 'vtt', 'ass', 'sub', 'ooona'],
@@ -498,10 +506,14 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                     source_language = bulk_source_language
                     target_languages = bulk_target_languages
                     formats = bulk_formats
-                    st.info(f"Using bulk configuration: {source_language} → {target_languages} → {formats}")
+                    intermediate_display = bulk_intermediate_language if bulk_intermediate_language != 'none' else None
+                    if intermediate_display:
+                        st.info(f"Using bulk configuration: {source_language} → {intermediate_display} → {target_languages} → {formats}")
+                    else:
+                        st.info(f"Using bulk configuration: {source_language} → {target_languages} → {formats}")
                 else:
                     # Individual configuration
-                    col1, col2, col3 = st.columns(3)
+                    col1, col2, col3, col4 = st.columns(4)
                     
                     with col1:
                         source_language = st.selectbox(
@@ -511,13 +523,20 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                         )
                     
                     with col2:
+                        intermediate_language = st.selectbox(
+                            "Bridge language (optional)",
+                            options=['none', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                            index=0, key=f"intermediate-lang-{file_id}"
+                        )
+                    
+                    with col3:
                         target_languages = st.multiselect(
                             "Target languages",
                             options=['transcribe', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
                             default=bulk_target_languages, key=f"target-lang-{file_id}"
                         )
                     
-                    with col3:
+                    with col4:
                         formats = st.multiselect(
                             "Output formats",
                             options=['srt', 'vtt', 'ass', 'sub', 'ooona'],
@@ -540,12 +559,15 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                             job_target_languages = bulk_target_languages
                             job_formats = bulk_formats
                             job_source_language = bulk_source_language
+                            job_intermediate_language = bulk_intermediate_language if bulk_intermediate_language != 'none' else None
                             job_translation_model = bulk_translation_model
                         else:
                             file_id = f"file-{i}-{file_info['name']}"
                             job_source_language = st.session_state.get(f"source-lang-{file_id}", 'auto')
                             job_target_languages = st.session_state.get(f"target-lang-{file_id}", ['transcribe'])
                             job_formats = st.session_state.get(f"format-{file_id}", ['srt'])
+                            job_intermediate_language_raw = st.session_state.get(f"intermediate-lang-{file_id}", 'none')
+                            job_intermediate_language = job_intermediate_language_raw if job_intermediate_language_raw != 'none' else None
                             job_translation_model = bulk_translation_model  # Use bulk model for individual files too for now
                         
                         # Prepare export options for S3
@@ -563,6 +585,7 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                             source_language=job_source_language,
                             target_languages=job_target_languages,
                             output_formats=job_formats,
+                            intermediate_language=job_intermediate_language,
                             export_options=export_options,
                             translation_model=job_translation_model,
                             transcription_model=bulk_transcription_model
@@ -670,7 +693,10 @@ def render_batch_progress_dashboard(batch_processor: BatchProcessor):
             
             with col2:
                 st.write(f"**File Size:** {job.file_size / (1024*1024):.1f} MB")
-                st.write(f"**Languages:** {job.source_language} → {', '.join(job.target_languages)}")
+                if hasattr(job, 'intermediate_language') and job.intermediate_language:
+                    st.write(f"**Languages:** {job.source_language} → {job.intermediate_language} → {', '.join(job.target_languages)}")
+                else:
+                    st.write(f"**Languages:** {job.source_language} → {', '.join(job.target_languages)}")
                 st.write(f"**Formats:** {', '.join(job.output_formats)}")
                 
                 # Cancel button for pending jobs
@@ -819,7 +845,7 @@ def _transcribe(file_path, model_name, model_config):
 
 def _process_single_file_with_batch_flow(file_path, filename, file_size, source_language, target_languages, output_formats, 
                                         device_preference, translation_model, transcription_model, model_config, enable_download, save_local, save_s3, s3_project, 
-                                        progress_placeholder, results_placeholder, user):
+                                        progress_placeholder, results_placeholder, user, intermediate_language=None):
     """
     Process single file using batch processing workflow
     
@@ -960,7 +986,8 @@ def _process_single_file_with_batch_flow(file_path, filename, file_size, source_
                         subs=base_subs,
                         source_language=source_language if source_language != 'auto' else 'auto',
                         target_language=target_language,
-                        model=translation_model
+                        model=translation_model,
+                        intermediate_language=intermediate_language
                     )
                 except Exception as translation_error:
                     # Handle CUDA errors specifically
@@ -984,7 +1011,8 @@ def _process_single_file_with_batch_flow(file_path, filename, file_size, source_
                             subs=base_subs,
                             source_language=source_language if source_language != 'auto' else 'auto',
                             target_language=target_language,
-                            model=translation_model
+                            model=translation_model,
+                            intermediate_language=intermediate_language
                         )
                     else:
                         raise translation_error
@@ -1365,6 +1393,7 @@ def render_single_file_processing(user):
 
     # Language Configuration
     with st.expander("🌐 Language Configuration", expanded=True):
+        # First row: Source and Bridge language
         col1, col2 = st.columns(2)
         
         with col1:
@@ -1376,12 +1405,20 @@ def render_single_file_processing(user):
             )
         
         with col2:
-            target_languages = st.multiselect(
-                "Target languages",
-                options=['transcribe', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
-                default=['transcribe'],
-                help="Languages to transcribe/translate to ('transcribe' = same as source)"
+            intermediate_language = st.selectbox(
+                "Bridge language (optional)",
+                options=['none', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+                index=0,
+                help="Optional intermediate language for improved translation quality. Leave as 'none' for direct translation."
             )
+        
+        # Second row: Target languages
+        target_languages = st.multiselect(
+            "Target languages",
+            options=['transcribe', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi'],
+            default=['transcribe'],
+            help="Languages to transcribe/translate to ('transcribe' = same as source)"
+        )
 
     # Transcription Model Configuration
     with st.expander("🎙️ Transcription Model Configuration", expanded=True):
@@ -1555,7 +1592,8 @@ def render_single_file_processing(user):
                 s3_project=s3_project if save_s3 else None,
                 progress_placeholder=progress_placeholder,
                 results_placeholder=results_placeholder,
-                user=user
+                user=user,
+                intermediate_language=intermediate_language if intermediate_language != 'none' else None
             )
         else:
             # Use managed temp file with automatic cleanup
@@ -1577,7 +1615,8 @@ def render_single_file_processing(user):
                     s3_project=s3_project if save_s3 else None,
                     progress_placeholder=progress_placeholder,
                     results_placeholder=results_placeholder,
-                    user=user
+                    user=user,
+                    intermediate_language=intermediate_language if intermediate_language != 'none' else None
                 )
         
         # Display results

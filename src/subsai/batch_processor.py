@@ -39,6 +39,7 @@ class JobConfig:
     source_language: str = 'auto'
     target_languages: List[str] = field(default_factory=lambda: ['transcribe'])
     output_formats: List[str] = field(default_factory=lambda: ['srt'])
+    intermediate_language: Optional[str] = None
     export_options: Dict[str, Any] = field(default_factory=dict)
     translation_model: str = 'deepseek-r1:1.5b'
     transcription_model: str = 'openai/whisper'
@@ -222,6 +223,7 @@ class BatchProcessor:
             source_language=config_options.get('source_language', 'auto'),
             target_languages=config_options.get('target_languages', ['transcribe']),
             output_formats=config_options.get('output_formats', ['srt']),
+            intermediate_language=config_options.get('intermediate_language', None),
             export_options=config_options.get('export_options', {}),
             translation_model=config_options.get('translation_model', 'deepseek-r1:1.5b'),
             transcription_model=config_options.get('transcription_model', 'openai/whisper')
@@ -435,7 +437,8 @@ class BatchProcessor:
                         subs=base_subs,
                         source_language=job.source_language if job.source_language != 'auto' else 'auto',
                         target_language=target_language,
-                        model=job.translation_model
+                        model=job.translation_model,
+                        intermediate_language=job.intermediate_language
                     )
                     lang_suffix = target_language
                 

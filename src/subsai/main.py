@@ -488,7 +488,8 @@ class Tools:
                   target_language: str,
                   model: Union[str, TranslationModel, OllamaTranslationModel, DeepSeekAPITranslationModel] = "m2m100",
                   model_family: str = None,
-                  translation_configs: dict = {}) -> SSAFile:
+                  translation_configs: dict = {},
+                  intermediate_language: str = None) -> SSAFile:
         """
         Translates a subtitles `SSAFile` object, what :func:`SubsAI.transcribe` is returning
 
@@ -499,6 +500,8 @@ class Tools:
                         :func:`create_translation_model`
         :param model_family: Either "mbart50" or "m2m100". By default, See `dl-translate` docs
         :param translation_configs: dict of translation configs (see :attr:`configs.ADVANCED_TOOLS_CONFIGS`)
+        :param intermediate_language: optional intermediate language for two-stage translation (e.g., 'en')
+                                    If provided, translation will be: source -> intermediate -> target
 
         :return: returns an `SSAFile` subtitles translated to the target language
         """
@@ -507,18 +510,57 @@ class Tools:
         else:
             translation_model = model
 
-        translated_subs = SSAFile()
-        for sub in subs:
-            translated_sub = sub.copy()
-            translated_sub.text = translation_model.translate(text=sub.text,
-                                                              source=source_language,
-                                                              target=target_language,
-                                                              batch_size=translation_configs[
-                                                                  'batch_size'] if 'batch_size' in translation_configs else 32,
-                                                              verbose=translation_configs[
-                                                                  'verbose'] if 'verbose' in translation_configs else False)
-            translated_subs.append(translated_sub)
-        return translated_subs
+        # Validate language flow and check if we need two-stage translation
+        if intermediate_language and intermediate_language != source_language and intermediate_language != target_language:
+            # Ensure intermediate language is different from both source and target
+            if source_language == target_language:
+                # Direct transcription case - no translation needed regardless of intermediate language
+                return subs
+            
+            # Two-stage translation improves quality for non-English source/target combinations
+            # Two-stage translation: source -> intermediate -> target
+            
+            # Stage 1: Translate from source to intermediate language
+            intermediate_subs = SSAFile()
+            for sub in subs:
+                intermediate_sub = sub.copy()
+                intermediate_sub.text = translation_model.translate(
+                    text=sub.text,
+                    source=source_language,
+                    target=intermediate_language,
+                    batch_size=translation_configs.get('batch_size', 32),
+                    verbose=translation_configs.get('verbose', False)
+                )
+                intermediate_subs.append(intermediate_sub)
+            
+            # Stage 2: Translate from intermediate to target language
+            translated_subs = SSAFile()
+            for sub in intermediate_subs:
+                translated_sub = sub.copy()
+                translated_sub.text = translation_model.translate(
+                    text=sub.text,
+                    source=intermediate_language,
+                    target=target_language,
+                    batch_size=translation_configs.get('batch_size', 32),
+                    verbose=translation_configs.get('verbose', False)
+                )
+                translated_subs.append(translated_sub)
+            
+            return translated_subs
+        else:
+            # Single-stage translation: source -> target
+            translated_subs = SSAFile()
+            for sub in subs:
+                translated_sub = sub.copy()
+                translated_sub.text = translation_model.translate(
+                    text=sub.text,
+                    source=source_language,
+                    target=target_language,
+                    batch_size=translation_configs.get('batch_size', 32),
+                    verbose=translation_configs.get('verbose', False)
+                )
+                translated_subs.append(translated_sub)
+            return translated_subs
 
     @staticmethod
     def auto_sync(subs: SSAFile,

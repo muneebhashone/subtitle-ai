@@ -71,6 +71,7 @@ def run(media_file_arg: List[str],
         translation_configs,
         translation_source_lang,
         translation_target_lang,
+        translation_intermediate_lang,
         output_suffix
         ):
     files = _handle_media_file(media_file_arg)
@@ -110,13 +111,17 @@ def run(media_file_arg: List[str],
             if tr_model is None:
                 print(f"[+] Creating translation model: {translation_model}")
                 tr_model = tools.create_translation_model(translation_model)
-            print(f"[+] Translating from: {translation_source_lang} to {translation_target_lang}")
+            if translation_intermediate_lang:
+                print(f"[+] Two-stage translation: {translation_source_lang} → {translation_intermediate_lang} → {translation_target_lang}")
+            else:
+                print(f"[+] Direct translation: {translation_source_lang} → {translation_target_lang}")
             translation_configs = _handle_configs(translation_configs)
             subs = tools.translate(subs=subs,
                                    source_language=translation_source_lang,
                                    target_language=translation_target_lang,
                                    model=tr_model,
-                                   translation_configs=translation_configs)
+                                   translation_configs=translation_configs,
+                                   intermediate_language=translation_intermediate_lang)
         print(f"[+] Subtitles file saved to: {file_name}".encode('utf-8'))
         subs.save(file_name)
     print('DONE!')
@@ -148,6 +153,7 @@ def main():
                              f"models: {available_translation_models()}", )
     parser.add_argument('-tsl', '--translation-source-lang', default=None, help="Source language of the subtitles")
     parser.add_argument('-ttl', '--translation-target-lang', default=None, help="Target language of the subtitles")
+    parser.add_argument('-til', '--translation-intermediate-lang', default=None, help="Optional intermediate language for two-stage translation (improves quality for non-English source/target combinations)")
     parser.add_argument('-tc', '--translation-configs', default="{}",
                         help="JSON configuration (path to a json file or a direct "
                              "string)")
@@ -165,6 +171,7 @@ def main():
         translation_configs=args.translation_configs,
         translation_source_lang=args.translation_source_lang,
         translation_target_lang=args.translation_target_lang,
+        translation_intermediate_lang=args.translation_intermediate_lang,
         output_suffix=args.output_suffix)
 
 

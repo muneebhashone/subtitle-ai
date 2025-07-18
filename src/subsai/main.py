@@ -185,6 +185,128 @@ class OllamaTranslationModel:
         ]
 
 
+class DeepSeekAPITranslationModel:
+    """
+    Translation model using DeepSeek API via OpenAI SDK.
+    Supports both deepseek-chat and deepseek-reasoner models.
+    """
+    
+    def __init__(self, model_name: str = "deepseek-chat", api_key: str = None, base_url: str = "https://api.deepseek.com"):
+        """
+        Initialize the DeepSeek API translation model.
+        
+        :param model_name: Name of the DeepSeek model to use (deepseek-chat or deepseek-reasoner)
+        :param api_key: DeepSeek API key
+        :param base_url: DeepSeek API base URL
+        """
+        try:
+            from openai import OpenAI
+        except ImportError:
+            raise ImportError("OpenAI SDK is required for DeepSeek API. Install with: pip install openai")
+        
+        # Remove 'api:' prefix if present
+        if model_name.startswith("api:"):
+            model_name = model_name[4:]
+        
+        self.model_name = model_name
+        self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
+        self.base_url = base_url
+        
+        if not self.api_key:
+            raise ValueError("DeepSeek API key is required. Set DEEPSEEK_API_KEY environment variable or provide api_key parameter.")
+        
+        # Initialize OpenAI client with DeepSeek endpoint
+        self.client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url
+        )
+        
+        # Validate model name
+        if self.model_name not in ["deepseek-chat", "deepseek-reasoner"]:
+            raise ValueError(f"Unsupported model: {self.model_name}. Supported models: deepseek-chat, deepseek-reasoner")
+    
+    def translate(self, text: str, source: str, target: str, **kwargs) -> str:
+        """
+        Translate text using DeepSeek API.
+        
+        :param text: Text to translate
+        :param source: Source language
+        :param target: Target language
+        :param kwargs: Additional parameters (ignored for compatibility)
+        :return: Translated text
+        """
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {
+                        'role': 'system',
+                        'content': f'You are a professional translator. Translate the following text from {source} to {target}. Return only the translation, no explanations or additional text.'
+                    },
+                    {
+                        'role': 'user',
+                        'content': text
+                    }
+                ],
+                stream=False
+            )
+            
+            raw_response = response.choices[0].message.content
+            cleaned_response = self._clean_deepseek_response(raw_response)
+            
+            return cleaned_response
+        except Exception as e:
+            raise Exception(f"Failed to translate with DeepSeek API: {e}")
+    
+    def _clean_deepseek_response(self, text: str) -> str:
+        """
+        Clean DeepSeek API response by removing think blocks and extra whitespace.
+        
+        :param text: Raw response from DeepSeek API
+        :return: Cleaned translation text
+        """
+        # Remove <think>...</think> blocks (including multiline)
+        cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Remove any remaining broken think tags
+        cleaned = re.sub(r'</?think[^>]*>', '', cleaned, flags=re.IGNORECASE)
+        
+        # Clean up whitespace
+        cleaned = cleaned.strip()
+        
+        # Remove multiple consecutive newlines
+        cleaned = re.sub(r'\n\s*\n', '\n', cleaned)
+        
+        # Remove extra spaces
+        cleaned = ' '.join(cleaned.split())
+        
+        # Handle empty responses
+        if not cleaned:
+            return text.strip()  # Fallback to original if cleaning results in empty string
+        
+        return cleaned
+    
+    def available_languages(self) -> list:
+        """
+        Return a list of supported languages for DeepSeek API models.
+        DeepSeek models support many languages, returning a comprehensive list.
+        """
+        return [
+            'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 
+            'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi', 'el', 'cs', 'hu', 'ro', 'bg', 'hr',
+            'sk', 'sl', 'et', 'lv', 'lt', 'mt', 'cy', 'ga', 'eu', 'ca', 'gl', 'ast', 'oc',
+            'br', 'co', 'gd', 'gv', 'kw', 'lb', 'rm', 'fur', 'sc', 'vec', 'an', 'ext',
+            'mwl', 'mdf', 'myv', 'kv', 'koi', 'udm', 'chm', 'mrj', 'sah', 'tyv', 'bak',
+            'tat', 'krc', 'kbd', 'ady', 'abq', 'inh', 'ce', 'av', 'dar', 'lbe', 'lez',
+            'tab', 'rut', 'tkr', 'agx', 'udi', 'lzz', 'xmf', 'ka', 'hy', 'az', 'kk',
+            'ky', 'uz', 'tk', 'mn', 'bua', 'xal', 'cv', 'sah', 'evn', 'even', 'chk',
+            'ckt', 'kca', 'sel', 'nio', 'enf', 'yrk', 'nen', 'niv', 'ulc', 'orc', 'ude',
+            'th', 'lo', 'my', 'km', 'vi', 'ms', 'id', 'tl', 'ceb', 'hil', 'war', 'bcl',
+            'pam', 'ban', 'min', 'ace', 'bjn', 'mad', 'bug', 'gor', 'sas', 'nij', 'rej',
+            'lmp', 'rob', 'tmw', 'bbc', 'bug', 'mak', 'tet'
+        ]
+
+
 class SubsAI:
     """
     Subs AI class
@@ -307,7 +429,7 @@ class Tools:
         return available_translation_models()
 
     @staticmethod
-    def available_translation_languages(model: Union[str, TranslationModel, OllamaTranslationModel]) -> list:
+    def available_translation_languages(model: Union[str, TranslationModel, OllamaTranslationModel, DeepSeekAPITranslationModel]) -> list:
         """
         Returns the languages supported by the translation model
 
@@ -321,14 +443,22 @@ class Tools:
         return langs
 
     @staticmethod
-    def create_translation_model(model_name: str = "m2m100", model_family: str = None) -> Union[TranslationModel, OllamaTranslationModel]:
+    def create_translation_model(model_name: str = "m2m100", model_family: str = None) -> Union[TranslationModel, OllamaTranslationModel, DeepSeekAPITranslationModel]:
         """
         Creates and returns a translation model instance.
 
         :param model_name: name of the model. To get available models use :func:`available_translation_models`
         :param model_family: Either "mbart50" or "m2m100". By default, See `dl-translate` docs
-        :return: A translation model instance (either dl_translate or Ollama)
+        :return: A translation model instance (either dl_translate, Ollama, or DeepSeek API)
         """
+        # Check if this is a DeepSeek API model
+        if model_name.startswith("api:"):
+            api_model_name = model_name[4:]  # Remove 'api:' prefix
+            if api_model_name in ["deepseek-chat", "deepseek-reasoner"]:
+                return DeepSeekAPITranslationModel(model_name)
+            else:
+                raise ValueError(f"Unsupported API model: {api_model_name}. Supported API models: deepseek-chat, deepseek-reasoner")
+        
         # Check if this is an Ollama model
         ollama_models = get_ollama_models()
         
@@ -356,7 +486,7 @@ class Tools:
     def translate(subs: SSAFile,
                   source_language: str,
                   target_language: str,
-                  model: Union[str, TranslationModel, OllamaTranslationModel] = "m2m100",
+                  model: Union[str, TranslationModel, OllamaTranslationModel, DeepSeekAPITranslationModel] = "m2m100",
                   model_family: str = None,
                   translation_configs: dict = {}) -> SSAFile:
         """

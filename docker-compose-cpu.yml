@@ -13,9 +13,3 @@ services:
       - SUBSAI_DB_PATH=/subsai/data/subsai_auth.db
     volumes:
       - ./data:/subsai/data
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              capabilities: [gpu]

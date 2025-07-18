@@ -4,6 +4,7 @@ maxUploadSize = 10000  # 10GB limit
 maxMessageSize = 10000  # 10GB message size limit
 enableXsrfProtection = false  # Disable for large file uploads
 enableCORS = false
+address = "0.0.0.0"  # Bind to all interfaces for Docker
 
 [browser]
 # Disable auto-opening browser for better server performance

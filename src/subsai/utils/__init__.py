@@ -70,18 +70,33 @@ def get_ollama_models() -> list:
         
         # Configure Ollama client for Docker environment
         if os.getenv('DOCKER_ENV', 'false').lower() == 'true':
-            client = ollama.Client(host="http://host.docker.internal:11434")
+            ollama_host = "http://host.docker.internal:11434"
+            client = ollama.Client(host=ollama_host)
         else:
+            ollama_host = "http://localhost:11434"
             client = ollama.Client()
         
         # Get list of models
         models_response = client.list()
         model_names = [model['name'] for model in models_response.get('models', [])]
+        print(f"Successfully fetched {len(model_names)} models from Ollama at {ollama_host}")
         return model_names
         
+    except ImportError as e:
+        print(f"Warning: Ollama package not installed: {e}")
+        print("Install with: pip install ollama")
+        return []
+    except ConnectionError as e:
+        print(f"Warning: Could not connect to Ollama service: {e}")
+        print("Make sure Ollama is running: ollama serve")
+        return []
     except Exception as e:
         # If Ollama is not available, return empty list
         print(f"Warning: Could not fetch Ollama models: {e}")
+        print("Troubleshooting:")
+        print("1. Make sure Ollama is installed: pip install ollama")
+        print("2. Make sure Ollama service is running: ollama serve")
+        print("3. Test connection: ollama list")
         return []
 
 
@@ -89,11 +104,15 @@ def available_translation_models() -> list:
     """
     Returns available translation models
     Features DeepSeek-R1 as the primary translation model with dynamically fetched Ollama models
+    and API-based DeepSeek models
 
     :return: list of available models
     """
-    # Start with default translation models
-    models = ["deepseek-r1:1.5b", "mistral-nemo:latest", "qwen2.5:7b"]
+    # Start with API-based DeepSeek models (always available if API key is provided)
+    models = ["api:deepseek-chat", "api:deepseek-reasoner"]
+    
+    # Add default local Ollama translation models
+    models.extend(["deepseek-r1:1.5b", "mistral-nemo:latest", "qwen2.5:7b"])
     
     # Add other available Ollama models
     ollama_models = get_ollama_models()

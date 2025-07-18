@@ -12,7 +12,8 @@
       "Bash(rm:*)",
       "Bash(cp:*)",
       "Bash(ls:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "WebFetch(domain:api-docs.deepseek.com)"
     ],
     "deny": []
   }

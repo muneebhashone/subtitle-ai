@@ -239,6 +239,30 @@ ADVANCED_TOOLS_CONFIGS = {
             },
         }
     },
+    'DeepSeek API Translation': {
+        'description': 'Translate using DeepSeek API models (deepseek-chat, deepseek-reasoner)',
+        'url': 'https://api-docs.deepseek.com/',
+        'config_schema': {
+            'api_key': {
+                'type': str,
+                'description': 'DeepSeek API key (can also be set via DEEPSEEK_API_KEY environment variable)',
+                'options': None,
+                'default': ''
+            },
+            'base_url': {
+                'type': str,
+                'description': 'DeepSeek API base URL',
+                'options': None,
+                'default': 'https://api.deepseek.com'
+            },
+            'model': {
+                'type': list,
+                'description': 'DeepSeek API model to use',
+                'options': ['api:deepseek-chat', 'api:deepseek-reasoner'],
+                'default': 'api:deepseek-chat'
+            }
+        }
+    },
 
 }
 

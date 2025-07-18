@@ -142,6 +142,112 @@ AWS_REGION=your_region
     return s3_enabled
 
 
+def _init_deepseek_api_config():
+    """Initialize DeepSeek API configuration in session state."""
+    if 'deepseek_api_config' not in st.session_state:
+        st.session_state['deepseek_api_config'] = {
+            'enabled': False,
+            'api_key': '',
+            'base_url': 'https://api.deepseek.com',
+            'model': 'api:deepseek-chat'
+        }
+
+
+def _get_deepseek_api_config_from_session_state() -> dict:
+    """Get DeepSeek API configuration from session state and environment variables."""
+    
+    config = {}
+    # Get basic config from session state
+    config['enabled'] = st.session_state.get('deepseek_api_enabled', False)
+    config['api_key'] = st.session_state.get('deepseek_api_key', '') or os.getenv('DEEPSEEK_API_KEY', '')
+    config['base_url'] = st.session_state.get('deepseek_api_base_url', 'https://api.deepseek.com')
+    config['model'] = st.session_state.get('deepseek_api_model', 'api:deepseek-chat')
+    
+    return config
+
+
+def _render_deepseek_api_config_ui():
+    """Render DeepSeek API configuration UI in sidebar."""
+    
+    st.subheader("🧠 DeepSeek API")
+    
+    # Check environment variable
+    env_api_key = os.getenv('DEEPSEEK_API_KEY')
+    
+    # Show environment variable status
+    if env_api_key:
+        st.success("✅ DeepSeek API key configured via environment variable")
+        api_key = env_api_key
+        
+        # Enable/disable DeepSeek API
+        deepseek_api_enabled = st.checkbox(
+            "Enable DeepSeek API Translation", 
+            value=st.session_state.get('deepseek_api_enabled', False),
+            help="Use DeepSeek API for translation (cloud-based)",
+            key='deepseek_api_enabled'
+        )
+    else:
+        st.warning("⚠️ DeepSeek API key not configured")
+        
+        # API key input
+        api_key = st.text_input(
+            "DeepSeek API Key",
+            value=st.session_state.get('deepseek_api_key', ''),
+            type="password",
+            help="Enter your DeepSeek API key",
+            key='deepseek_api_key'
+        )
+        
+        deepseek_api_enabled = st.checkbox(
+            "Enable DeepSeek API Translation", 
+            value=st.session_state.get('deepseek_api_enabled', False) and bool(api_key),
+            disabled=not bool(api_key),
+            help="Use DeepSeek API for translation (cloud-based)",
+            key='deepseek_api_enabled'
+        )
+        
+        if not api_key:
+            st.info("💡 Get your API key from: https://platform.deepseek.com/api_keys")
+    
+    if deepseek_api_enabled and api_key:
+        # Base URL configuration (advanced)
+        with st.expander("Advanced Settings", expanded=False):
+            base_url = st.text_input(
+                "API Base URL",
+                value=st.session_state.get('deepseek_api_base_url', 'https://api.deepseek.com'),
+                help="DeepSeek API base URL",
+                key='deepseek_api_base_url'
+            )
+        
+        # Model selection
+        model = st.selectbox(
+            "DeepSeek Model",
+            options=['api:deepseek-chat', 'api:deepseek-reasoner'],
+            index=0 if st.session_state.get('deepseek_api_model', 'api:deepseek-chat') == 'api:deepseek-chat' else 1,
+            help="Choose DeepSeek model: deepseek-chat (faster, cheaper) or deepseek-reasoner (better reasoning)",
+            key='deepseek_api_model'
+        )
+        
+        # Test connection button
+        if st.button("🔍 Test DeepSeek API Connection"):
+            with st.spinner("Testing DeepSeek API connection..."):
+                try:
+                    from subsai.main import DeepSeekAPITranslationModel
+                    test_model = DeepSeekAPITranslationModel(
+                        model_name=model,
+                        api_key=api_key,
+                        base_url=base_url
+                    )
+                    # Test with a simple translation
+                    result = test_model.translate("Hello", "en", "es")
+                    if result:
+                        st.success(f"✅ DeepSeek API connection successful! Test translation: '{result}'")
+                    else:
+                        st.error("❌ DeepSeek API connection failed - empty response")
+                except Exception as e:
+                    st.error(f"❌ DeepSeek API connection failed: {str(e)}")
+    
+    return deepseek_api_enabled
 
 
 def _get_key(model_name: str, config_name: str) -> str:
@@ -1324,6 +1430,11 @@ def render_single_file_processing(user):
                        "- OOONA_API_KEY\n"
                        "- OOONA_API_NAME")
 
+    # DeepSeek API Configuration Panel
+    with st.sidebar.expander('DeepSeek API Translation', expanded=False):
+            _init_deepseek_api_config()
+            deepseek_api_enabled = _render_deepseek_api_config_ui()
+
     # Validation before processing
     if not target_languages:
         st.error("Please select at least one target language")
@@ -1468,6 +1579,7 @@ def run():
         sys.argv = [
             "streamlit", "run", __file__, 
             "--theme.base", "dark",
+            "--server.address", "0.0.0.0",  # Bind to all interfaces for Docker
             "--server.maxUploadSize", "10000",  # 10GB upload limit
             "--server.maxMessageSize", "10000",  # 10GB message size limit
             "--browser.gatherUsageStats", "false"

@@ -7,7 +7,14 @@ This script follows the same client setup pattern used in main.py.
 """
 
 import os
-import ollama
+import sys
+
+try:
+    import ollama
+except ImportError:
+    print("Error: ollama package not found")
+    print("Install with: pip install ollama")
+    sys.exit(1)
 
 
 def test_ollama_models():

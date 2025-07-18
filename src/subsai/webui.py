@@ -414,7 +414,7 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
         with col1:
             # Transcription model selection
             available_models = subs_ai.available_models()
-            whisper_models = [model for model in available_models if 'whisper' in model.lower()]
+            whisper_models = [model for model in available_models if model == 'openai/whisper']
             
             bulk_transcription_model = st.selectbox(
                 "Default transcription model",
@@ -1423,7 +1423,7 @@ def render_single_file_processing(user):
     # Transcription Model Configuration
     with st.expander("🎙️ Transcription Model Configuration", expanded=True):
         available_models = subs_ai.available_models()
-        whisper_models = [model for model in available_models if 'whisper' in model.lower()]
+        whisper_models = [model for model in available_models if model == 'openai/whisper']
         
         transcription_model = st.selectbox(
             "Transcription model",

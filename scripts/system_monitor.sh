@@ -7,7 +7,8 @@
 set -e
 
 # Configuration
-COMPOSE_FILE="docker-compose.yml"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMPOSE_FILE="$SCRIPT_DIR/../docker-compose.yml"
 SERVICE_NAME="subsai-webui"
 LOG_FILE="/var/log/subsai-monitor.log"
 MAX_LOG_SIZE=10485760  # 10MB in bytes
@@ -124,7 +125,9 @@ restart_service() {
         
         # Try harder restart
         log "Attempting force restart of $service"
-        if docker-compose -f "$COMPOSE_FILE" down "$service" && docker-compose -f "$COMPOSE_FILE" up -d "$service"; then
+        if docker-compose -f "$COMPOSE_FILE" stop "$service" && \
+           docker-compose -f "$COMPOSE_FILE" rm -f "$service" && \
+           docker-compose -f "$COMPOSE_FILE" up -d "$service"; then
             log "Successfully force-restarted $service"
             send_notification "SubsAI Service Force-Restarted" "Service $service was force-restarted after restart failure"
             return 0

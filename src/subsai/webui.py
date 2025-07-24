@@ -27,7 +27,7 @@ from st_aggrid import AgGrid, GridUpdateMode, GridOptionsBuilder, DataReturnMode
 
 from subsai import SubsAI, Tools
 from subsai.configs import ADVANCED_TOOLS_CONFIGS, DEFAULT_S3_CONFIG, S3_CONFIG_SCHEMA, DEFAULT_WEBHOOK_CONFIG, WEBHOOK_CONFIG_SCHEMA
-from subsai.utils import available_subs_formats
+from subsai.utils import available_subs_formats, get_model_display_name, get_model_internal_name, get_model_options_for_display, get_model_display_index
 from subsai.utils.file_manager import managed_temp_file, BatchFileManager
 from subsai.storage.s3_storage import create_s3_storage
 from subsai.batch_processor import BatchProcessor, JobStatus, JobConfig
@@ -661,12 +661,18 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
             available_models = subs_ai.available_models()
             whisper_models = [model for model in available_models if model == 'openai/whisper']
             
-            bulk_transcription_model = st.selectbox(
+            # Get display options for transcription models
+            display_options, internal_options = get_model_options_for_display(whisper_models, 'transcription')
+            
+            selected_display_model = st.selectbox(
                 "Default transcription model",
-                options=whisper_models,
+                options=display_options,
                 index=0,  # Default to first Whisper model
                 help="AI model to use for speech-to-text transcription"
             )
+            
+            # Convert back to internal name for processing
+            bulk_transcription_model = get_model_internal_name(selected_display_model, 'transcription')
             
             # Model variant selection for bulk processing
             try:
@@ -696,12 +702,18 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                 st.error(f"Error loading translation models: {e}")
                 translation_models = ["deepseek-r1:1.5b"]
             
-            bulk_translation_model = st.selectbox(
+            # Get display options for translation models
+            display_options, internal_options = get_model_options_for_display(translation_models, 'translation')
+            
+            selected_display_model = st.selectbox(
                 "Default translation model",
-                options=translation_models,
+                options=display_options,
                 index=0,  # DeepSeek R1 is always first
                 help="AI model to use for translation (only used when translating to different languages)"
             )
+            
+            # Convert back to internal name for processing
+            bulk_translation_model = get_model_internal_name(selected_display_model, 'translation')
         
         use_bulk_config = st.checkbox("Use bulk configuration for all files", value=True)
         
@@ -810,12 +822,18 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        individual_model = st.selectbox(
+                        # Get display options for individual transcription models
+                        display_options, internal_options = get_model_options_for_display(whisper_models, 'transcription')
+                        
+                        selected_display_model = st.selectbox(
                             "Transcription model",
-                            options=whisper_models,
+                            options=display_options,
                             index=0, key=f"model-{file_id}",
                             help="AI model to use for speech-to-text transcription"
                         )
+                        
+                        # Convert back to internal name for processing
+                        individual_model = get_model_internal_name(selected_display_model, 'transcription')
                         
                     with col2:
                         # Model variant selection for individual files
@@ -1762,12 +1780,18 @@ def render_single_file_processing(user):
         available_models = subs_ai.available_models()
         whisper_models = [model for model in available_models if model == 'openai/whisper']
         
-        transcription_model = st.selectbox(
+        # Get display options for transcription models
+        display_options, internal_options = get_model_options_for_display(whisper_models, 'transcription')
+        
+        selected_display_model = st.selectbox(
             "Transcription model",
-            options=whisper_models,
+            options=display_options,
             index=0,  # Default to first Whisper model
             help="AI model to use for speech-to-text transcription. Large models provide better accuracy but require more memory."
         )
+        
+        # Convert back to internal name for processing
+        transcription_model = get_model_internal_name(selected_display_model, 'transcription')
         
         # Show model information
         try:
@@ -1804,15 +1828,21 @@ def render_single_file_processing(user):
             st.error(f"Error loading translation models: {e}")
             translation_models = ["deepseek-r1:1.5b"]
         
-        translation_model = st.selectbox(
+        # Get display options for translation models
+        display_options, internal_options = get_model_options_for_display(translation_models, 'translation')
+        
+        selected_display_model = st.selectbox(
             "Translation model",
-            options=translation_models,
+            options=display_options,
             index=0,  # DeepSeek R1 is always first
             help="AI model to use for translation (only used when translating to different languages)"
         )
         
+        # Convert back to internal name for processing
+        translation_model = get_model_internal_name(selected_display_model, 'translation')
+        
         if translation_model != "deepseek-r1:1.5b":
-            st.info(f"Using {translation_model} for translation")
+            st.info(f"Using {get_model_display_name(translation_model, 'translation')} for translation")
 
     # Output Configuration
     with st.expander("📄 Output Configuration", expanded=True):

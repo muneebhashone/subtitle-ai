@@ -74,7 +74,7 @@ validate_aws_cli() {
 
 validate_aws_credentials() {
     log_info "Validating AWS credentials..."
-    if ! aws sts get-caller-identity &> /dev/null; then
+    if ! aws sts get-caller-identity > /dev/null; then
         log_error "AWS credentials not configured or invalid"
         log_error "Please run 'aws configure' or set AWS environment variables"
         exit 1
@@ -116,7 +116,7 @@ validate_inputs() {
 
 verify_bucket_exists() {
     log_info "Verifying S3 bucket exists..."
-    if ! aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$REGION" 2>/dev/null; then
+    if ! aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$REGION" > /dev/null; then
         log_error "S3 bucket '$BUCKET_NAME' does not exist or is not accessible"
         exit 1
     fi
@@ -148,7 +148,7 @@ verify_bucket_exists
 
 # Step 1: Create SNS Topic
 log_info "Creating SNS topic..."
-if TOPIC_ARN=$(aws sns create-topic --name "$TOPIC_NAME" --region "$REGION" --query 'TopicArn' --output text 2>/dev/null); then
+if TOPIC_ARN=$(aws sns create-topic --name "$TOPIC_NAME" --region "$REGION" --query 'TopicArn' --output text); then
     log_success "SNS Topic created: $TOPIC_ARN"
 else
     log_error "Failed to create SNS topic"
@@ -163,7 +163,7 @@ if SUBSCRIPTION_ARN=$(aws sns subscribe \
     --protocol "$PROTOCOL" \
     --notification-endpoint "$ENDPOINT_URL" \
     --region "$REGION" \
-    --query 'SubscriptionArn' --output text 2>/dev/null); then
+    --query 'SubscriptionArn' --output text); then
     log_success "Subscription created: $SUBSCRIPTION_ARN"
 else
     log_error "Failed to create SNS subscription"
@@ -177,7 +177,7 @@ if aws sns set-subscription-attributes \
     --subscription-arn "$SUBSCRIPTION_ARN" \
     --attribute-name DeliveryPolicy \
     --attribute-value "$DELIVERY_POLICY" \
-    --region "$REGION" &>/dev/null; then
+    --region "$REGION" > /dev/null; then
     log_success "Delivery policy configured"
 else
     log_error "Failed to set delivery policy"
@@ -186,7 +186,7 @@ fi
 
 # Step 4: Get AWS Account ID
 log_info "Getting AWS Account ID..."
-if ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null); then
+if ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text); then
     log_success "Account ID retrieved: $ACCOUNT_ID"
 else
     log_error "Failed to get AWS Account ID"
@@ -227,7 +227,7 @@ if aws sns set-topic-attributes \
     --topic-arn "$TOPIC_ARN" \
     --attribute-name Policy \
     --attribute-value "file://$SNS_POLICY_FILE" \
-    --region "$REGION" &>/dev/null; then
+    --region "$REGION" > /dev/null; then
     log_success "SNS topic policy applied"
 else
     log_error "Failed to set SNS topic policy"
@@ -266,7 +266,7 @@ EOF
 if aws s3api put-bucket-notification-configuration \
     --bucket "$BUCKET_NAME" \
     --notification-configuration "file://$S3_NOTIFICATION_FILE" \
-    --region "$REGION" &>/dev/null; then
+    --region "$REGION" > /dev/null; then
     log_success "S3 event notifications configured"
 else
     log_error "Failed to configure S3 event notifications"

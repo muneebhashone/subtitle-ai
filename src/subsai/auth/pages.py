@@ -388,7 +388,11 @@ def render_user_management():
                 
                 with col3:
                     if st.button("🗑️ Delete User", key=f"delete_user_{user.id}"):
-                        success, message = auth.auth.delete_user(user.id, auth.get_current_user().id)
+                        # Pass the current session ID (not the user ID) for admin-rights validation
+                        success, message = auth.auth.delete_user(
+                            user.id,
+                            st.session_state.session_id
+                        )
                         if success:
                             st.success(message)
                             st.experimental_rerun()

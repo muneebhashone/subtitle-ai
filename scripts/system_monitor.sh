@@ -116,18 +116,18 @@ restart_service() {
     log "Attempting to restart service: $service"
     
     # Try graceful restart first
-    if docker-compose -f "$COMPOSE_FILE" restart "$service"; then
+    if docker compose -f "$COMPOSE_FILE" restart "$service"; then
         log "Successfully restarted $service"
         send_notification "SubsAI Service Restarted" "Service $service was restarted successfully"
         return 0
     else
-        error "Failed to restart $service with docker-compose restart"
+        error "Failed to restart $service with docker compose restart"
         
         # Try harder restart
         log "Attempting force restart of $service"
-        if docker-compose -f "$COMPOSE_FILE" stop "$service" && \
-           docker-compose -f "$COMPOSE_FILE" rm -f "$service" && \
-           docker-compose -f "$COMPOSE_FILE" up -d "$service"; then
+        if docker compose -f "$COMPOSE_FILE" stop "$service" && \
+           docker compose -f "$COMPOSE_FILE" rm -f "$service" && \
+           docker compose -f "$COMPOSE_FILE" up -d "$service"; then
             log "Successfully force-restarted $service"
             send_notification "SubsAI Service Force-Restarted" "Service $service was force-restarted after restart failure"
             return 0
@@ -167,10 +167,10 @@ main() {
     
     # Get the actual container name
     local container_name
-    container_name=$(docker-compose ps -q "$SERVICE_NAME" 2>/dev/null | head -1)
+    container_name=$(docker compose ps -q "$SERVICE_NAME" 2>/dev/null | head -1)
     
     if [ -z "$container_name" ]; then
-        container_name=$(docker-compose -f "$COMPOSE_FILE" ps | grep "$SERVICE_NAME" | awk '{print $1}' | head -1)
+        container_name=$(docker compose -f "$COMPOSE_FILE" ps | grep "$SERVICE_NAME" | awk '{print $1}' | head -1)
     fi
     
     if [ -z "$container_name" ]; then
@@ -178,7 +178,7 @@ main() {
         
         # Try to start the service
         log "Attempting to start service $SERVICE_NAME"
-        if docker-compose -f "$COMPOSE_FILE" up -d "$SERVICE_NAME"; then
+        if docker compose -f "$COMPOSE_FILE" up -d "$SERVICE_NAME"; then
             log "Successfully started $SERVICE_NAME"
             send_notification "SubsAI Service Started" "Service $SERVICE_NAME was started from stopped state"
         else

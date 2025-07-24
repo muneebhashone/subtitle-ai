@@ -389,3 +389,38 @@ DEFAULT_FILE_CLEANUP_CONFIG = {
     'batch_output_retention_hours': 24,
     'enable_periodic_cleanup': True
 }
+
+# Webhook Configuration
+WEBHOOK_CONFIG_SCHEMA = {
+    'enabled': {
+        'type': bool,
+        'description': 'Enable webhook processing',
+        'default': True
+    },
+    'source_language': {
+        'type': str,
+        'description': 'Default source language for webhook processing',
+        'default': 'he',
+        'options': ['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi']
+    },
+    'target_languages': {
+        'type': list,
+        'description': 'Default target languages for webhook processing',
+        'default': ['transcribe', 'en', 'fr'],
+        'options': ['transcribe', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'he', 'hi', 'tr', 'pl', 'nl', 'sv', 'da', 'no', 'fi']
+    },
+    'output_formats': {
+        'type': list,
+        'description': 'Default output formats for webhook processing',
+        'default': ['srt', 'ooona'],
+        'options': ['srt', 'vtt', 'ass', 'sub', 'ooona']
+    }
+}
+
+# Default webhook configuration
+DEFAULT_WEBHOOK_CONFIG = {
+    'enabled': True,
+    'source_language': 'he',
+    'target_languages': ['transcribe', 'en', 'fr'],
+    'output_formats': ['srt', 'ooona']
+}

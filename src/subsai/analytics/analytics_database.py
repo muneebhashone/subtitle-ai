@@ -43,8 +43,8 @@ class AnalyticsDatabase:
     
     def _ensure_analytics_tables(self):
         """
-        Ensure analytics tables exist in the database
-        Creates analytics_events, file_analytics, and usage_metrics tables if they don't exist
+        Ensure all necessary tables exist in the database
+        Creates all required tables including auth tables that analytics depends on
         """
         try:
             with self.get_connection() as conn:
@@ -53,31 +53,17 @@ class AnalyticsDatabase:
                 # Get all table creation SQL from the schema
                 all_table_sql = DatabaseSchema.get_create_tables_sql()
                 
-                # Filter to only analytics-related tables
-                analytics_table_keywords = ['analytics_events', 'file_analytics', 'usage_metrics']
-                analytics_sql = []
-                
+                # Create ALL tables to ensure dependencies are met
+                # Analytics queries depend on users table, so we need the full schema
                 for sql in all_table_sql:
-                    # Check if this SQL creates an analytics table
-                    for keyword in analytics_table_keywords:
-                        if keyword in sql:
-                            analytics_sql.append(sql)
-                            break
-                
-                # Create analytics tables
-                for sql in analytics_sql:
-                    cursor.execute(sql)
-                
-                # Create indexes for analytics tables (filter from all SQL)
-                index_sql = [sql for sql in all_table_sql if 'CREATE INDEX' in sql and any(keyword in sql for keyword in analytics_table_keywords)]
-                for sql in index_sql:
-                    cursor.execute(sql)
+                    if sql.strip():  # Skip empty SQL statements
+                        cursor.execute(sql)
                 
                 conn.commit()
-                self.logger.info(f"Analytics tables ensured in database at {self.db_path}")
+                self.logger.info(f"All required tables ensured in database at {self.db_path}")
                 
         except Exception as e:
-            self.logger.error(f"Failed to ensure analytics tables: {e}")
+            self.logger.error(f"Failed to ensure database tables: {e}")
             # Don't raise the exception - allow the app to continue even if table creation fails
             # This provides graceful degradation if there are permission issues
     
@@ -392,6 +378,19 @@ class AnalyticsDatabase:
             start_date = datetime.date.today() - datetime.timedelta(days=days)
             with self.get_connection() as conn:
                 cursor = conn.cursor()
+                
+                # Check if users table exists before running the JOIN query
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+                if not cursor.fetchone():
+                    self.logger.warning("Users table does not exist, cannot get user rankings")
+                    return []
+                
+                # Check if usage_metrics table exists
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='usage_metrics'")
+                if not cursor.fetchone():
+                    self.logger.warning("Usage metrics table does not exist, cannot get user rankings")
+                    return []
+                
                 cursor.execute(
                     f"""
                     SELECT u.username, SUM(um.{metric}) as total

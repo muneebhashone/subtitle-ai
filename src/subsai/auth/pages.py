@@ -301,7 +301,7 @@ def render_admin_panel():
     AuthUtils.show_user_info(user, "_admin")
     
     # Admin tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["👥 User Management", "📊 System Stats", "📈 Analytics", "⚙️ System Settings"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["👥 User Management", "📊 System Stats", "📈 Analytics", "📡 Webhook Config", "⚙️ System Settings"])
     
     with tab1:
         render_user_management()
@@ -313,6 +313,9 @@ def render_admin_panel():
         render_analytics_panel()
     
     with tab4:
+        render_webhook_config()
+    
+    with tab5:
         render_system_settings()
 
 
@@ -453,6 +456,17 @@ def render_system_stats():
         st.write(f"**Database Size:** {db_size:.2f} KB")
     except Exception:
         st.write("**Database Size:** Unable to determine")
+
+
+def render_webhook_config():
+    """Render webhook configuration section"""
+    # Import here to avoid circular imports
+    try:
+        from subsai.webui import _render_webhook_config_ui
+        _render_webhook_config_ui()
+    except ImportError as e:
+        st.error(f"Failed to load webhook configuration UI: {e}")
+        st.write("Please ensure the webhook configuration module is properly installed.")
 
 
 def render_system_settings():

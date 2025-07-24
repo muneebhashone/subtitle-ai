@@ -22,17 +22,27 @@ class AnalyticsService:
             db_path: Path to SQLite database file. If None, uses default location.
         """
         if db_path is None:
-            # Use same database as auth system
+            # Use same database path logic as auth system to ensure consistency
+            import os
             from pathlib import Path
-            project_root = Path(__file__).parent.parent.parent.parent
-            data_dir = project_root / "data"
-            data_dir.mkdir(exist_ok=True)
-            db_path = str(data_dir / "subsai_auth.db")
+            
+            # Check for environment variable first (same as auth system)
+            db_path = os.getenv('SUBSAI_DB_PATH')
+            
+            if db_path is None:
+                # Default to same location as auth system
+                project_root = Path(__file__).parent.parent.parent.parent
+                data_dir = project_root / "data"
+                data_dir.mkdir(exist_ok=True)
+                db_path = str(data_dir / "subsai_auth.db")
         
         self.analytics_db = AnalyticsDatabase(db_path)
         self.logger = logging.getLogger(__name__)
         self.config = get_analytics_config()
         self.enabled = self.config['enabled']
+        
+        # Log the database path for debugging
+        self.logger.info(f"Analytics service initialized with database: {db_path}")
     
     def is_enabled(self) -> bool:
         """Check if analytics is enabled"""

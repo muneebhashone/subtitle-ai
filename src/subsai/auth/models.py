@@ -123,6 +123,34 @@ class UsageMetrics:
         return data
 
 
+@dataclass
+class WebhookConfig:
+    """Webhook configuration model for storing webhook processing settings"""
+    id: Optional[int] = None
+    enabled: bool = True
+    source_language: str = "he"
+    target_languages: Optional[List[str]] = None  # JSON list of target languages
+    output_formats: Optional[List[str]] = None    # JSON list of output formats
+    created_at: Optional[datetime.datetime] = None
+    updated_at: Optional[datetime.datetime] = None
+    
+    def __post_init__(self):
+        """Set default values if None"""
+        if self.target_languages is None:
+            self.target_languages = ['transcribe', 'en', 'fr']
+        if self.output_formats is None:
+            self.output_formats = ['srt', 'ooona']
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert webhook config to dictionary"""
+        data = asdict(self)
+        if self.target_languages:
+            data['target_languages'] = json.dumps(self.target_languages)
+        if self.output_formats:
+            data['output_formats'] = json.dumps(self.output_formats)
+        return data
+
+
 class DatabaseSchema:
     """Database schema definitions"""
     
@@ -241,5 +269,19 @@ class DatabaseSchema:
             """,
             """
             CREATE INDEX IF NOT EXISTS idx_usage_metrics_date ON usage_metrics(date)
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS webhook_config (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                enabled BOOLEAN DEFAULT 1,
+                source_language TEXT DEFAULT 'he',
+                target_languages TEXT DEFAULT '["transcribe", "en", "fr"]',  -- JSON array
+                output_formats TEXT DEFAULT '["srt", "ooona"]',             -- JSON array
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS idx_webhook_config_enabled ON webhook_config(enabled)
             """
         ]

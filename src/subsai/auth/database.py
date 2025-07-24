@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
 
-from .models import User, Session, UserProject, DatabaseSchema
+from .models import User, Session, UserProject, WebhookConfig, DatabaseSchema
 
 
 class Database:
@@ -399,3 +399,80 @@ class Database:
         except Exception as e:
             self.logger.error(f"Error deleting project: {e}")
             return False
+    
+    # Webhook Configuration Methods
+    def get_webhook_config(self) -> Optional[WebhookConfig]:
+        """Get current webhook configuration (there should only be one)"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM webhook_config ORDER BY created_at DESC LIMIT 1")
+                row = cursor.fetchone()
+                
+                if row:
+                    import json
+                    return WebhookConfig(
+                        id=row['id'],
+                        enabled=bool(row['enabled']),
+                        source_language=row['source_language'],
+                        target_languages=json.loads(row['target_languages']),
+                        output_formats=json.loads(row['output_formats']),
+                        created_at=datetime.datetime.fromisoformat(row['created_at']),
+                        updated_at=datetime.datetime.fromisoformat(row['updated_at'])
+                    )
+        except Exception as e:
+            self.logger.error(f"Error getting webhook config: {e}")
+        return None
+    
+    def save_webhook_config(self, config: WebhookConfig) -> bool:
+        """Save or update webhook configuration"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                import json
+                now = datetime.datetime.now()
+                
+                # Check if config already exists
+                existing = self.get_webhook_config()
+                
+                if existing:
+                    # Update existing config
+                    cursor.execute(
+                        """
+                        UPDATE webhook_config 
+                        SET enabled = ?, source_language = ?, target_languages = ?, 
+                            output_formats = ?, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (config.enabled, config.source_language, 
+                         json.dumps(config.target_languages),
+                         json.dumps(config.output_formats),
+                         now, existing.id)
+                    )
+                else:
+                    # Insert new config
+                    cursor.execute(
+                        """
+                        INSERT INTO webhook_config 
+                        (enabled, source_language, target_languages, output_formats, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (config.enabled, config.source_language,
+                         json.dumps(config.target_languages),
+                         json.dumps(config.output_formats),
+                         now, now)
+                    )
+                
+                conn.commit()
+                return True
+        except Exception as e:
+            self.logger.error(f"Error saving webhook config: {e}")
+            return False
+    
+    def get_webhook_config_or_default(self) -> WebhookConfig:
+        """Get webhook configuration or return default if none exists"""
+        config = self.get_webhook_config()
+        if config is None:
+            # Return default configuration
+            config = WebhookConfig()
+        return config

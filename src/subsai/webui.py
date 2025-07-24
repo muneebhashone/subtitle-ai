@@ -26,7 +26,7 @@ from streamlit_player import st_player
 from st_aggrid import AgGrid, GridUpdateMode, GridOptionsBuilder, DataReturnMode
 
 from subsai import SubsAI, Tools
-from subsai.configs import ADVANCED_TOOLS_CONFIGS, DEFAULT_S3_CONFIG, S3_CONFIG_SCHEMA
+from subsai.configs import ADVANCED_TOOLS_CONFIGS, DEFAULT_S3_CONFIG, S3_CONFIG_SCHEMA, DEFAULT_WEBHOOK_CONFIG, WEBHOOK_CONFIG_SCHEMA
 from subsai.utils import available_subs_formats
 from subsai.utils.file_manager import managed_temp_file, BatchFileManager
 from subsai.storage.s3_storage import create_s3_storage
@@ -82,6 +82,170 @@ def _get_s3_config_from_session_state() -> dict:
     return config
 
 
+def _init_webhook_config():
+    """Initialize webhook configuration in session state."""
+    if 'webhook_config' not in st.session_state:
+        st.session_state['webhook_config'] = DEFAULT_WEBHOOK_CONFIG.copy()
+
+
+def _get_webhook_config_from_session_state() -> dict:
+    """Get webhook configuration from session state and environment variables."""
+    
+    config = {}
+    # Get basic config from session state
+    for config_name in WEBHOOK_CONFIG_SCHEMA:
+        key = f"webhook_{config_name}"
+        if key in st.session_state:
+            config[config_name] = st.session_state[key]
+        else:
+            config[config_name] = WEBHOOK_CONFIG_SCHEMA[config_name]['default']
+    
+    # Override 'enabled' with the actual checkbox value
+    config['enabled'] = st.session_state.get('webhook_enabled', DEFAULT_WEBHOOK_CONFIG['enabled'])
+    
+    # Add environment variable overrides
+    config['source_language'] = os.getenv('WEBHOOK_SOURCE_LANGUAGE', config['source_language'])
+    
+    # Handle target languages from environment
+    env_target_langs = os.getenv('WEBHOOK_TARGET_LANGUAGES')
+    if env_target_langs:
+        config['target_languages'] = env_target_langs.split(',')
+    
+    # Handle output formats from environment
+    env_output_formats = os.getenv('WEBHOOK_OUTPUT_FORMATS')
+    if env_output_formats:
+        config['output_formats'] = env_output_formats.split(',')
+    
+    return config
+
+
+def _render_webhook_config_ui():
+    """Render webhook configuration UI in admin panel."""
+    
+    st.subheader("📡 Webhook Configuration")
+    st.info("🔗 **Webhook Processing Settings** - Configure default language and output settings for webhook-triggered processing")
+    
+    # Get database connection
+    from subsai.auth.decorators import AuthUtils
+    auth = AuthUtils.init_auth()
+    db = auth.auth.db
+    
+    # Load current configuration from database
+    current_config = db.get_webhook_config_or_default()
+    
+    # Check environment variables
+    webhook_source_lang = os.getenv('WEBHOOK_SOURCE_LANGUAGE')
+    webhook_target_langs = os.getenv('WEBHOOK_TARGET_LANGUAGES')  
+    webhook_output_formats = os.getenv('WEBHOOK_OUTPUT_FORMATS')
+    
+    # Show environment variable status
+    if webhook_source_lang or webhook_target_langs or webhook_output_formats:
+        st.warning("⚠️ Environment variables are overriding database settings")
+        if webhook_source_lang:
+            st.write(f"**Source Language (env):** {webhook_source_lang}")
+        if webhook_target_langs:
+            st.write(f"**Target Languages (env):** {webhook_target_langs}")
+        if webhook_output_formats:
+            st.write(f"**Output Formats (env):** {webhook_output_formats}")
+    else:
+        st.success("✅ Using database configuration")
+    
+    # Configuration form
+    with st.form("webhook_config_form"):
+        # Enable/disable webhook processing
+        webhook_enabled = st.checkbox(
+            "Enable webhook processing",
+            value=current_config.enabled,
+            help="Enable automatic processing of media files uploaded via webhook"
+        )
+        
+        webhook_source_language = None
+        webhook_target_languages = None
+        webhook_output_formats = None
+        
+        if webhook_enabled:
+            with st.expander("🌐 Language Settings", expanded=True):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    webhook_source_language = st.selectbox(
+                        "Source language",
+                        options=WEBHOOK_CONFIG_SCHEMA['source_language']['options'],
+                        index=WEBHOOK_CONFIG_SCHEMA['source_language']['options'].index(current_config.source_language),
+                        help="Default source language for webhook processing"
+                    )
+                
+                with col2:
+                    webhook_target_languages = st.multiselect(
+                        "Target languages",
+                        options=WEBHOOK_CONFIG_SCHEMA['target_languages']['options'],
+                        default=current_config.target_languages,
+                        help="Default target languages for webhook processing"
+                    )
+            
+            with st.expander("📄 Output Settings", expanded=True):
+                webhook_output_formats = st.multiselect(
+                    "Output formats",
+                    options=WEBHOOK_CONFIG_SCHEMA['output_formats']['options'],
+                    default=current_config.output_formats,
+                    help="Default output formats for webhook processing"
+                )
+            
+            # Validation
+            if webhook_enabled and not webhook_target_languages:
+                st.error("⚠️ Please select at least one target language")
+            
+            if webhook_enabled and not webhook_output_formats:
+                st.error("⚠️ Please select at least one output format")
+        
+        # Save button
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            save_clicked = st.form_submit_button("💾 Save Configuration", type="primary")
+        
+        if save_clicked:
+            if webhook_enabled and (not webhook_target_languages or not webhook_output_formats):
+                st.error("❌ Cannot save: Please select at least one target language and output format")
+            else:
+                # Create new configuration
+                from subsai.auth.models import WebhookConfig
+                new_config = WebhookConfig(
+                    enabled=webhook_enabled,
+                    source_language=webhook_source_language or current_config.source_language,
+                    target_languages=webhook_target_languages or current_config.target_languages,
+                    output_formats=webhook_output_formats or current_config.output_formats
+                )
+                
+                # Save to database
+                if db.save_webhook_config(new_config):
+                    st.success("✅ Webhook configuration saved successfully!")
+                    st.experimental_rerun()
+                else:
+                    st.error("❌ Failed to save webhook configuration")
+    
+    # Show current configuration
+    st.subheader("📋 Current Configuration")
+    updated_config = db.get_webhook_config_or_default()
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write(f"**Status:** {'🟢 Enabled' if updated_config.enabled else '🔴 Disabled'}")
+        st.write(f"**Source Language:** {updated_config.source_language}")
+    with col2:
+        st.write(f"**Target Languages:** {', '.join(updated_config.target_languages)}")
+        st.write(f"**Output Formats:** {', '.join(updated_config.output_formats)}")
+    
+    if updated_config.updated_at:
+        st.write(f"**Last Updated:** {updated_config.updated_at.strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    # Environment variable export (optional)
+    with st.expander("🔧 Environment Variables (Optional)", expanded=False):
+        st.info("You can optionally override these settings with environment variables:")
+        st.code(f"""
+export WEBHOOK_SOURCE_LANGUAGE="{updated_config.source_language}"
+export WEBHOOK_TARGET_LANGUAGES="{','.join(updated_config.target_languages)}"
+export WEBHOOK_OUTPUT_FORMATS="{','.join(updated_config.output_formats)}"
+        """, language="bash")
 
 
 def _render_s3_config_ui():
@@ -437,7 +601,7 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                     # Reinitialize batch processor with new device preference
                     if 'batch_processor' in st.session_state:
                         del st.session_state.batch_processor
-                    st.rerun()
+                    st.experimental_rerun()
             
             with col_device2:
                 # Show device status

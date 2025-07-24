@@ -1,6 +1,6 @@
 """
 FastAPI Webhook Server for SubsAI
-Handles S3 SNS notifications and triggers automatic Hebrew audio processing
+Handles S3 SNS notifications and triggers automatic audio processing with configurable settings
 """
 
 import os
@@ -19,6 +19,7 @@ import uvicorn
 from subsai.webhook import SNSHandler, S3Downloader
 from subsai.auth.user_management import UserManager, User
 from subsai.analytics import AnalyticsService
+from subsai.configs import DEFAULT_WEBHOOK_CONFIG, WEBHOOK_CONFIG_SCHEMA
 
 # Configure logging
 logging.basicConfig(
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(
     title="SubsAI Webhook Server",
-    description="Webhook endpoint for automatic Hebrew audio processing from S3 uploads",
+    description="Webhook endpoint for automatic audio processing from S3 uploads with configurable language and output settings",
     version="1.0.0"
 )
 
@@ -40,6 +41,58 @@ s3_downloader = S3Downloader()
 user_manager = UserManager()
 analytics = AnalyticsService()
 thread_pool = ThreadPoolExecutor(max_workers=3)  # Limit concurrent processing
+
+
+def get_webhook_config() -> dict:
+    """Get webhook configuration from database with environment variable overrides."""
+    try:
+        # Get database configuration
+        from subsai.auth.database import Database
+        db = Database()
+        db_config = db.get_webhook_config_or_default()
+        
+        # Start with database configuration
+        config = {
+            'enabled': db_config.enabled,
+            'source_language': db_config.source_language,
+            'target_languages': db_config.target_languages,
+            'output_formats': db_config.output_formats
+        }
+        
+        # Override with environment variables if available
+        config['enabled'] = os.getenv('WEBHOOK_ENABLED', str(config['enabled'])).lower() == 'true'
+        config['source_language'] = os.getenv('WEBHOOK_SOURCE_LANGUAGE', config['source_language'])
+        
+        # Handle target languages from environment
+        env_target_langs = os.getenv('WEBHOOK_TARGET_LANGUAGES')
+        if env_target_langs:
+            config['target_languages'] = [lang.strip() for lang in env_target_langs.split(',')]
+        
+        # Handle output formats from environment
+        env_output_formats = os.getenv('WEBHOOK_OUTPUT_FORMATS')
+        if env_output_formats:
+            config['output_formats'] = [fmt.strip() for fmt in env_output_formats.split(',')]
+        
+        return config
+        
+    except Exception as e:
+        logger.error(f"Failed to load webhook config from database: {e}")
+        # Fallback to default configuration
+        config = DEFAULT_WEBHOOK_CONFIG.copy()
+        
+        # Still try environment variables as fallback
+        config['enabled'] = os.getenv('WEBHOOK_ENABLED', str(config['enabled'])).lower() == 'true'
+        config['source_language'] = os.getenv('WEBHOOK_SOURCE_LANGUAGE', config['source_language'])
+        
+        env_target_langs = os.getenv('WEBHOOK_TARGET_LANGUAGES')
+        if env_target_langs:
+            config['target_languages'] = [lang.strip() for lang in env_target_langs.split(',')]
+        
+        env_output_formats = os.getenv('WEBHOOK_OUTPUT_FORMATS')
+        if env_output_formats:
+            config['output_formats'] = [fmt.strip() for fmt in env_output_formats.split(',')]
+        
+        return config
 
 
 class WebhookPayload(BaseModel):
@@ -123,10 +176,10 @@ async def handle_s3_upload_webhook(
     """
     Handle S3 upload notifications from SNS
     
-    Processes Hebrew audio files with predefined settings:
-    - Source Language: Hebrew (he)
-    - Target Languages: Hebrew, English, French
-    - Output Formats: SRT, OOONA
+    Processes audio files with configurable settings from webhook configuration:
+    - Configurable source and target languages
+    - Configurable output formats
+    - Settings can be configured via admin panel or environment variables
     """
     try:
         # Log incoming request
@@ -180,7 +233,7 @@ async def handle_s3_upload_webhook(
                 "status": "processing",
                 "job_ids": job_ids,
                 "files_queued": len(job_ids),
-                "message": "Files queued for Hebrew processing"
+                "message": "Files queued for processing with configured settings"
             }
         )
         
@@ -222,14 +275,17 @@ async def process_s3_media_file(job_id: str, bucket_name: str, s3_key: str,
         except ImportError:
             raise Exception("Failed to import processing function")
         
-        # Configure Hebrew processing parameters
+        # Get webhook configuration
+        webhook_config = get_webhook_config()
+        
+        # Configure processing parameters from webhook configuration
         processing_config = {
             'file_path': local_file_path,
             'filename': filename,
             'file_size': actual_size,
-            'source_language': 'he',  # Hebrew source language
-            'target_languages': ['transcribe', 'en', 'fr'],  # Hebrew + English + French
-            'output_formats': ['srt', 'ooona'],  # Both required formats
+            'source_language': webhook_config['source_language'],
+            'target_languages': webhook_config['target_languages'],
+            'output_formats': webhook_config['output_formats'],
             'device_preference': 'auto',  # Optimal device selection
             'enable_download': False,  # No UI download needed
             'save_local': False,  # Don't save locally
@@ -247,13 +303,13 @@ async def process_s3_media_file(job_id: str, bucket_name: str, s3_key: str,
                 filename=filename,
                 model='openai/whisper',
                 file_size=actual_size,
-                source_language='he',
-                target_languages=['transcribe', 'en', 'fr'],
-                output_formats=['srt', 'ooona']
+                source_language=webhook_config['source_language'],
+                target_languages=webhook_config['target_languages'],
+                output_formats=webhook_config['output_formats']
             )
         
         # Process the file (this runs in thread pool)
-        logger.info(f"Processing {filename} with Hebrew audio settings...")
+        logger.info(f"Processing {filename} with configured settings: {webhook_config['source_language']} → {webhook_config['target_languages']} → {webhook_config['output_formats']}...")
         
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
@@ -271,7 +327,7 @@ async def process_s3_media_file(job_id: str, bucket_name: str, s3_key: str,
                 filename=filename,
                 processing_time=processing_time,
                 success=result.get('success', False),
-                output_formats=['srt', 'ooona']
+                output_formats=webhook_config['output_formats']
             )
         
         # Log successful completion
@@ -320,6 +376,7 @@ async def webhook_status():
     bucket_name = os.getenv('WEBHOOK_S3_BUCKET', 'aidevlondon')
     s3_healthy = s3_downloader.test_connection(bucket_name)
     system_user = get_system_user()
+    webhook_config = get_webhook_config()
     
     return {
         "status": "operational",
@@ -327,13 +384,14 @@ async def webhook_status():
         "components": {
             "s3_connection": "healthy" if s3_healthy else "unhealthy",
             "system_user": "configured" if system_user else "missing",
-            "analytics": "enabled" if analytics.is_enabled() else "disabled"
+            "analytics": "enabled" if analytics.is_enabled() else "disabled",
+            "webhook_processing": "enabled" if webhook_config['enabled'] else "disabled"
         },
         "configuration": {
             "s3_bucket": bucket_name,
-            "source_language": "he",
-            "target_languages": ["transcribe", "en", "fr"],
-            "output_formats": ["srt", "ooona"]
+            "source_language": webhook_config['source_language'],
+            "target_languages": webhook_config['target_languages'],
+            "output_formats": webhook_config['output_formats']
         }
     }
 

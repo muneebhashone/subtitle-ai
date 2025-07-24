@@ -20,6 +20,7 @@ import os
 import pathlib
 import re
 import tempfile
+import textwrap
 from typing import Union, Dict
 
 import ffmpeg
@@ -406,7 +407,31 @@ class SubsAI:
         else:
             stt_model = model
         media_file = str(pathlib.Path(media_file).resolve())
-        return stt_model.transcribe(media_file)
+        subs = stt_model.transcribe(media_file)
+
+        # ---- Hard-wrap every subtitle line to ≤ 60 characters ----
+        MAX_CHARS_PER_LINE = 60
+        for event in subs:
+            # Split current text on both "\n" (SRT) and "\N" (ASS) line breaks
+            raw_lines = re.split(r'\n|\\N', event.text)
+            wrapped_lines = []
+            for line in raw_lines:
+                if line.strip() == "":
+                    wrapped_lines.append("")              # keep empty lines
+                    continue
+                wrapped_lines.extend(
+                    textwrap.wrap(
+                        line,
+                        width=MAX_CHARS_PER_LINE,
+                        break_long_words=False,
+                        replace_whitespace=False,
+                    )
+                )
+            event.text = "\n".join(wrapped_lines)         # join as new subtitle rows
+            if hasattr(event, "plaintext"):               # keep plaintext in sync
+                event.plaintext = event.text
+
+        return subs
 
 
 class Tools:

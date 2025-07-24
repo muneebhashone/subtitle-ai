@@ -43,6 +43,7 @@ class JobConfig:
     export_options: Dict[str, Any] = field(default_factory=dict)
     translation_model: str = 'deepseek-r1:1.5b'
     transcription_model: str = 'openai/whisper'
+    model_variant: Optional[str] = None
     status: JobStatus = JobStatus.PENDING
     progress: float = 0.0
     current_task: str = ""
@@ -226,7 +227,8 @@ class BatchProcessor:
             intermediate_language=config_options.get('intermediate_language', None),
             export_options=config_options.get('export_options', {}),
             translation_model=config_options.get('translation_model', 'deepseek-r1:1.5b'),
-            transcription_model=config_options.get('transcription_model', 'openai/whisper')
+            transcription_model=config_options.get('transcription_model', 'openai/whisper'),
+            model_variant=config_options.get('model_variant', None)
         )
         
         self.progress_tracker.add_job(job_config)
@@ -340,6 +342,10 @@ class BatchProcessor:
                 'target_language': 'transcribe'  # Always transcribe first, then translate if needed
             }
             
+            # Add model variant if specified
+            if job.model_variant:
+                model_config['model_type'] = job.model_variant
+            
             # Add device configuration
             device_config = self._get_model_device_config(model_type)
             model_config.update(device_config)
@@ -401,6 +407,10 @@ class BatchProcessor:
                         'target_language': 'transcribe',
                         'device': 'cpu'
                     }
+                    
+                    # Add model variant if specified
+                    if job.model_variant:
+                        cpu_config['model_type'] = job.model_variant
                     
                     self.logger.info(f"Creating CPU-only model with config: {cpu_config}")
                     model = self.subs_ai.create_model(model_type, cpu_config)

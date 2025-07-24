@@ -331,6 +331,42 @@ def _create_batch_download_zip(batch_processor: BatchProcessor) -> bytes:
     return zip_buffer.getvalue()
 
 
+def _create_single_file_download_zip(results: list, base_filename: str) -> bytes:
+    """
+    Create a ZIP file containing all results from single file processing.
+    
+    :param results: List of result dictionaries with 'content', 'filename' keys
+    :param base_filename: Base filename to use for the folder name
+    :return: ZIP file content as bytes
+    """
+    import io
+    
+    # Create ZIP file in memory
+    zip_buffer = io.BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        if not results:
+            # Add empty file to indicate no results
+            zip_file.writestr("no_files_generated.txt", "No files were generated.")
+            return zip_buffer.getvalue()
+        
+        # Create a folder based on the original filename
+        folder_name = Path(base_filename).stem  # Use filename without extension as folder name
+        
+        for result in results:
+            try:
+                # Add content directly to ZIP (no file path needed)
+                zip_path = f"{folder_name}/{result['filename']}"
+                zip_file.writestr(zip_path, result['content'])
+            except Exception as e:
+                # Add error info if content can't be processed
+                error_content = f"Error processing file {result['filename']}: {str(e)}"
+                zip_path = f"{folder_name}/ERROR_{result['filename']}.txt"
+                zip_file.writestr(zip_path, error_content)
+    
+    return zip_buffer.getvalue()
+
+
 @require_auth
 def render_batch_processing_with_auth(user):
     """
@@ -467,6 +503,24 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                 index=0,  # Default to first Whisper model
                 help="AI model to use for speech-to-text transcription"
             )
+            
+            # Model variant selection for bulk processing
+            try:
+                config_schema = subs_ai.config_schema(bulk_transcription_model)
+                if 'model_type' in config_schema:
+                    model_type_config = config_schema['model_type']
+                    if len(model_type_config['options']) > 1:
+                        bulk_model_variant = st.selectbox(
+                            "Default model size",
+                            options=model_type_config['options'],
+                            index=model_type_config['options'].index(model_type_config['default']),
+                            help="Model size affects accuracy and processing speed. Larger models are more accurate but slower."
+                        )
+                    else:
+                        bulk_model_variant = model_type_config['default']
+                        st.info(f"Model size: {bulk_model_variant}")
+            except Exception:
+                bulk_model_variant = None
         
         with col2:
             # Translation model selection for bulk processing
@@ -587,6 +641,37 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                             options=['srt', 'vtt', 'ass', 'sub', 'ooona'],
                             default=bulk_formats, key=f"format-{file_id}"
                         )
+                    
+                    # Model configuration for individual files
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        individual_model = st.selectbox(
+                            "Transcription model",
+                            options=whisper_models,
+                            index=0, key=f"model-{file_id}",
+                            help="AI model to use for speech-to-text transcription"
+                        )
+                        
+                    with col2:
+                        # Model variant selection for individual files
+                        try:
+                            config_schema = subs_ai.config_schema(individual_model)
+                            if 'model_type' in config_schema:
+                                model_type_config = config_schema['model_type']
+                                if len(model_type_config['options']) > 1:
+                                    individual_model_variant = st.selectbox(
+                                        "Model size",
+                                        options=model_type_config['options'],
+                                        index=model_type_config['options'].index(model_type_config['default']),
+                                        key=f"model-variant-{file_id}",
+                                        help="Model size affects accuracy and processing speed. Larger models are more accurate but slower."
+                                    )
+                                else:
+                                    individual_model_variant = model_type_config['default']
+                                    st.info(f"Model size: {individual_model_variant}")
+                        except Exception:
+                            individual_model_variant = None
         
         # Action buttons
         col1, col2, col3, col4 = st.columns(4)
@@ -606,6 +691,8 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                             job_source_language = bulk_source_language
                             job_intermediate_language = bulk_intermediate_language if bulk_intermediate_language != 'none' else None
                             job_translation_model = bulk_translation_model
+                            job_transcription_model = bulk_transcription_model
+                            job_model_variant = bulk_model_variant
                         else:
                             file_id = f"file-{i}-{file_info['name']}"
                             job_source_language = st.session_state.get(f"source-lang-{file_id}", 'auto')
@@ -614,6 +701,8 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                             job_intermediate_language_raw = st.session_state.get(f"intermediate-lang-{file_id}", 'none')
                             job_intermediate_language = job_intermediate_language_raw if job_intermediate_language_raw != 'none' else None
                             job_translation_model = bulk_translation_model  # Use bulk model for individual files too for now
+                            job_transcription_model = st.session_state.get(f"model-{file_id}", bulk_transcription_model)
+                            job_model_variant = st.session_state.get(f"model-variant-{file_id}", bulk_model_variant)
                         
                         # Prepare export options for S3
                         export_options = {}
@@ -633,7 +722,8 @@ def render_batch_processing_ui(batch_processor: BatchProcessor, subs_ai: SubsAI,
                             intermediate_language=job_intermediate_language,
                             export_options=export_options,
                             translation_model=job_translation_model,
-                            transcription_model=bulk_transcription_model
+                            transcription_model=job_transcription_model,
+                            model_variant=job_model_variant
                         )
                     
                     batch_processor.start_processing()
@@ -1629,7 +1719,46 @@ def render_single_file_processing(user):
     progress_placeholder = st.empty()
     results_placeholder = st.empty()
 
+    # Show persistent Download All button if results exist
+    if 'single_file_results' in st.session_state and st.session_state['single_file_results']:
+        st.subheader("📦 Previous Results")
+        col_download_all, col_clear = st.columns([2, 1])
+        
+        with col_download_all:
+            try:
+                results = st.session_state['single_file_results']
+                base_filename = st.session_state.get('single_file_base_filename', 'subtitles')
+                zip_content = _create_single_file_download_zip(results, base_filename)
+                import datetime
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                zip_filename = f"{Path(base_filename).stem}_subtitles_{timestamp}.zip"
+                
+                st.download_button(
+                    f"📦 Download All Previous Results ({len(results)} files)",
+                    data=zip_content,
+                    file_name=zip_filename,
+                    mime="application/zip",
+                    help=f"Download all {len(results)} previously generated files as a ZIP archive"
+                )
+            except Exception as e:
+                st.error(f"Error creating download: {e}")
+        
+        with col_clear:
+            if st.button("🗑️ Clear Results"):
+                del st.session_state['single_file_results']
+                if 'single_file_base_filename' in st.session_state:
+                    del st.session_state['single_file_base_filename']
+                st.experimental_rerun()
+        
+        st.write("---")
+
     if process_button:
+        # Clear previous results when starting new processing
+        if 'single_file_results' in st.session_state:
+            del st.session_state['single_file_results']
+        if 'single_file_base_filename' in st.session_state:
+            del st.session_state['single_file_base_filename']
+        
         # Validate file input
         if not file_path:
             st.error("Please select a media file")
@@ -1704,6 +1833,10 @@ def render_single_file_processing(user):
         
         # Display results
         if result['success']:
+            # Store results in session state for Download All functionality
+            st.session_state['single_file_results'] = result['results']
+            st.session_state['single_file_base_filename'] = filename
+            
             with results_placeholder.container():
                 st.success(f"🎉 Processing completed successfully!")
                 st.info(f"⏱️ Processing time: {result['processing_time']:.2f} seconds")
@@ -1711,6 +1844,28 @@ def render_single_file_processing(user):
                 
                 # Display generated files
                 st.subheader("📄 Generated Files")
+                
+                # Add Download All button first
+                if len(result['results']) > 1:
+                    col_download_all, col_spacer = st.columns([1, 3])
+                    with col_download_all:
+                        try:
+                            zip_content = _create_single_file_download_zip(result['results'], filename)
+                            import datetime
+                            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                            zip_filename = f"{Path(filename).stem}_subtitles_{timestamp}.zip"
+                            
+                            st.download_button(
+                                f"📦 Download All ({len(result['results'])} files)",
+                                data=zip_content,
+                                file_name=zip_filename,
+                                mime="application/zip",
+                                help=f"Download all {len(result['results'])} generated files as a ZIP archive"
+                            )
+                        except Exception as e:
+                            st.error(f"Error creating download: {e}")
+                    
+                    st.write("---")
                 
                 for file_result in result['results']:
                     col1, col2, col3 = st.columns([2, 1, 1])
@@ -1755,6 +1910,12 @@ def render_single_file_processing(user):
                     # Store the base SSAFile object for legacy compatibility
                     st.session_state['transcribed_subs'] = result['base_subs']
         else:
+            # Clear results on failure
+            if 'single_file_results' in st.session_state:
+                del st.session_state['single_file_results']
+            if 'single_file_base_filename' in st.session_state:
+                del st.session_state['single_file_base_filename']
+            
             with results_placeholder.container():
                 st.error(f"❌ Processing failed: {result['error']}")
                 st.info(f"⏱️ Processing time: {result['processing_time']:.2f} seconds")

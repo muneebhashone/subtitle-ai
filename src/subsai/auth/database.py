@@ -16,6 +16,14 @@ from .models import User, Session, UserProject, WebhookConfig, DatabaseSchema
 class Database:
     """Database manager for SQLite operations"""
     
+    # Shared state for all instances (Borg pattern)
+    _shared_state: Dict[str, Any] = {}
+    
+    def __new__(cls, *args, **kwargs):
+        obj = super(Database, cls).__new__(cls)
+        obj.__dict__ = cls._shared_state
+        return obj
+    
     def __init__(self, db_path: Optional[str] = None):
         """
         Initialize database connection
@@ -23,6 +31,10 @@ class Database:
         Args:
             db_path: Path to SQLite database file. If None, uses default location.
         """
+        # If we've already run the heavy-weight setup once, skip it.
+        if getattr(self, "_initialized", False):
+            return
+            
         if db_path is None:
             # Check for environment variable first
             db_path = os.getenv('SUBSAI_DB_PATH')
@@ -37,6 +49,9 @@ class Database:
         self.db_path = db_path
         self.logger = logging.getLogger(__name__)
         self._init_database()
+        
+        # Mark as initialized so subsequent constructors are cheap
+        self._initialized = True
     
     def _init_database(self):
         """Initialize database and create tables if they don't exist"""

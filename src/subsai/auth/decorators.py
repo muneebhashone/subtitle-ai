@@ -31,6 +31,13 @@ class StreamlitAuth:
     
     def get_current_user(self) -> Optional[User]:
         """Get current authenticated user"""
+        # Try to restore session_id from URL if not already in session_state
+        if not st.session_state.session_id:
+            query_params = st.experimental_get_query_params()
+            session_param = query_params.get("session")
+            if session_param:
+                st.session_state.session_id = session_param[0]
+
         if not st.session_state.session_id:
             return None
         
@@ -72,6 +79,10 @@ class StreamlitAuth:
             if user:
                 st.session_state.user = user
                 st.session_state.is_authenticated = True
+                
+                # Persist session in URL so browser reload keeps the session
+                st.experimental_set_query_params(session=session_id)
+                
                 return True, message
         
         return False, message
@@ -87,6 +98,9 @@ class StreamlitAuth:
         st.session_state.session_id = None
         st.session_state.user = None
         st.session_state.is_authenticated = False
+        
+        # Clear the session parameter from URL to prevent accidental reuse
+        st.experimental_set_query_params()
         
         return success
     

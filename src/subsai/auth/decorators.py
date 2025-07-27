@@ -22,8 +22,13 @@ class StreamlitAuth:
         self.auth = auth_manager or AuthManager()
         
         # Initialize session state for authentication
+        # Try to recover token from URL first before setting defaults
         if 'session_id' not in st.session_state:
-            st.session_state.session_id = None
+            query_params = st.experimental_get_query_params()
+            session_param = query_params.get("session")
+            st.session_state.session_id = session_param[0] if session_param else None
+        
+        # Initialize other session state variables
         if 'user' not in st.session_state:
             st.session_state.user = None
         if 'is_authenticated' not in st.session_state:
@@ -31,13 +36,6 @@ class StreamlitAuth:
     
     def get_current_user(self) -> Optional[User]:
         """Get current authenticated user"""
-        # Try to restore session_id from URL if not already in session_state
-        if not st.session_state.session_id:
-            query_params = st.experimental_get_query_params()
-            session_param = query_params.get("session")
-            if session_param:
-                st.session_state.session_id = session_param[0]
-
         if not st.session_state.session_id:
             return None
         

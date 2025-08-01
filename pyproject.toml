@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Subtitles generation tool powered by OpenAI's Whisper and its variants"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 keywords = ["subtitles", "openai", "whisper"]
 license = {text = "LICENSE"}
 

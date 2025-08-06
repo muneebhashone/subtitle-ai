@@ -38,6 +38,14 @@ from streamlit.web import cli as stcli
 from tempfile import NamedTemporaryFile
 import time
 
+# Import async processing components
+from subsai.async_webui_integration import (
+    init_async_webui_in_session, 
+    render_async_performance_panel, 
+    render_async_config_panel,
+    get_async_webui_manager
+)
+
 __author__ = "AION Voice AI"
 __contact__ = "hello@aionvoice.ai"
 __copyright__ = "Copyright 2025, AION Voice AI"
@@ -536,7 +544,30 @@ def render_batch_processing_with_auth(user):
     """
     Render batch processing with user authentication
     """
-    # Initialize batch processor in session state with user context
+    # Check if async processing is enabled
+    async_config = st.session_state.get('async_config', {})
+    use_async_batch = async_config.get('enabled', False)
+    
+    if use_async_batch:
+        # Try to use async batch processor
+        try:
+            async_manager = st.session_state.get('async_webui_manager')
+            if async_manager:
+                if 'async_batch_processor' not in st.session_state:
+                    st.session_state.async_batch_processor = async_manager.create_async_batch_processor_bridge(
+                        user_id=user.id if user else None
+                    )
+                
+                # Show async processing indicator
+                st.info("⚡ Using async batch processing for improved performance")
+                render_batch_processing_ui(st.session_state.async_batch_processor, subs_ai, user)
+                return
+            else:
+                st.warning("Async manager not available, falling back to regular batch processing")
+        except Exception as e:
+            st.warning(f"Async batch processing failed, falling back to regular processing: {str(e)}")
+    
+    # Initialize regular batch processor in session state with user context
     if 'batch_processor' not in st.session_state:
         # Get device preference from session state or use auto
         device_preference = st.session_state.get('batch_device_preference', 'auto')
@@ -1604,6 +1635,9 @@ def webui() -> None:
     if 'current_page' not in st.session_state:
         st.session_state.current_page = "dashboard"
     
+    # Initialize async webui components
+    init_async_webui_in_session()
+    
     # Sidebar navigation
     with st.sidebar:
         # Display AION logo
@@ -1615,6 +1649,10 @@ def webui() -> None:
         
         # User info
         AuthUtils.show_user_info(user, "_nav")
+        
+        # Async performance and configuration panels
+        render_async_performance_panel()
+        render_async_config_panel()
         
         # Navigation menu
         st.subheader("📍 Navigation")
@@ -1874,6 +1912,10 @@ def render_single_file_processing(user):
     with st.sidebar.expander('S3 Storage', expanded=False):
             _init_s3_config()
             s3_enabled = _render_s3_config_ui()
+    
+    # Check if async processing is enabled
+    async_config = st.session_state.get('async_config', {})
+    use_async_processing = async_config.get('enabled', False) and async_config.get('batch_translation', False)
 
     # OOONA Configuration Panel
     with st.sidebar.expander('OOONA API', expanded=False):
@@ -1979,33 +2021,86 @@ def render_single_file_processing(user):
         if 'selected_model_size' in locals() and selected_model_size:
             model_config['model_type'] = selected_model_size
         
-        # Process the file with the new batch processing workflow
-        if file_mode == 'Local path':
-            result = _process_single_file_with_batch_flow(
-                file_path=actual_file_path,
-                filename=filename,
-                file_size=file_size,
-                source_language=source_language,
-                target_languages=target_languages,
-                output_formats=output_formats,
-                device_preference=device_preference,
-                translation_model=translation_model,
-                transcription_model=transcription_model,
-                model_config=model_config,
-                enable_download=enable_download,
-                save_local=save_local,
-                save_s3=save_s3,
-                s3_project=s3_project if save_s3 else None,
-                progress_placeholder=progress_placeholder,
-                results_placeholder=results_placeholder,
-                user=user,
-                intermediate_language=intermediate_language if intermediate_language != 'none' else None
-            )
-        else:
-            # Use managed temp file with automatic cleanup
-            with managed_temp_file(uploaded_file=uploaded_file) as temp_file_path:
+        # Choose processing method based on async configuration
+        if use_async_processing:
+            # Use async processing
+            try:
+                async_manager = st.session_state.get('async_webui_manager')
+                if async_manager:
+                    # Prepare configuration for async processing
+                    async_config = {
+                        'source_language': source_language,
+                        'target_languages': target_languages,
+                        'output_formats': output_formats,
+                        'device_preference': device_preference,
+                        'translation_model': translation_model,
+                        'transcription_model': transcription_model,
+                        'model_config': model_config,
+                        'intermediate_language': intermediate_language if intermediate_language != 'none' else None
+                    }
+                    
+                    if file_mode == 'Local path':
+                        async_result = async_manager.process_single_file_async_bridge(
+                            file_path=actual_file_path,
+                            filename=filename,
+                            file_size=file_size,
+                            config=async_config,
+                            progress_placeholder=progress_placeholder,
+                            results_placeholder=results_placeholder,
+                            user=user
+                        )
+                    else:
+                        # Handle uploaded file with async processing
+                        with managed_temp_file(uploaded_file=uploaded_file) as temp_file_path:
+                            async_result = async_manager.process_single_file_async_bridge(
+                                file_path=temp_file_path,
+                                filename=filename,
+                                file_size=file_size,
+                                config=async_config,
+                                progress_placeholder=progress_placeholder,
+                                results_placeholder=results_placeholder,
+                                user=user
+                            )
+                    
+                    # Convert async result to standard format
+                    if async_result.success:
+                        result = {
+                            'success': True,
+                            'results': async_result.results,
+                            'processing_time': async_result.processing_time,
+                            'device_used': 'async',
+                            'base_subs': None  # Not available in async mode
+                        }
+                        
+                        # Display performance metrics
+                        if async_result.performance_stats:
+                            st.info(f"⚡ Async Processing Performance:")
+                            stats = async_result.performance_stats
+                            if 'model_manager' in stats:
+                                model_stats = stats['model_manager']
+                                st.write(f"- Model cache hits: {model_stats.get('cache_hits', 0)}")
+                            if 'batch_translator' in stats:
+                                trans_stats = stats['batch_translator']
+                                st.write(f"- Translation cache hits: {trans_stats.get('cache_hits', 0)}")
+                                st.write(f"- API calls saved: {trans_stats.get('api_calls_saved', 0)}")
+                    else:
+                        result = {
+                            'success': False,
+                            'error': async_result.error_message,
+                            'processing_time': async_result.processing_time
+                        }
+                else:
+                    # Fallback to regular processing if async manager not available
+                    use_async_processing = False
+            except Exception as e:
+                st.warning(f"Async processing failed, falling back to regular processing: {str(e)}")
+                use_async_processing = False
+        
+        if not use_async_processing:
+            # Use regular batch processing workflow
+            if file_mode == 'Local path':
                 result = _process_single_file_with_batch_flow(
-                    file_path=temp_file_path,
+                    file_path=actual_file_path,
                     filename=filename,
                     file_size=file_size,
                     source_language=source_language,
@@ -2024,6 +2119,29 @@ def render_single_file_processing(user):
                     user=user,
                     intermediate_language=intermediate_language if intermediate_language != 'none' else None
                 )
+            else:
+                # Use managed temp file with automatic cleanup
+                with managed_temp_file(uploaded_file=uploaded_file) as temp_file_path:
+                    result = _process_single_file_with_batch_flow(
+                        file_path=temp_file_path,
+                        filename=filename,
+                        file_size=file_size,
+                        source_language=source_language,
+                        target_languages=target_languages,
+                        output_formats=output_formats,
+                        device_preference=device_preference,
+                        translation_model=translation_model,
+                        transcription_model=transcription_model,
+                        model_config=model_config,
+                        enable_download=enable_download,
+                        save_local=save_local,
+                        save_s3=save_s3,
+                        s3_project=s3_project if save_s3 else None,
+                        progress_placeholder=progress_placeholder,
+                        results_placeholder=results_placeholder,
+                        user=user,
+                        intermediate_language=intermediate_language if intermediate_language != 'none' else None
+                    )
         
         # Display results
         if result['success']:
